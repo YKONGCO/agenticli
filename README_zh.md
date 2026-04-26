@@ -2,7 +2,7 @@
 
 # ⚡ agenticli
 
-**Expose tools as lightweight CLI commands for LLM agents** 🔧✨
+**把工具暴露为适合 LLM agent 使用的轻量 CLI 命令层** 🔧✨
 
 [English](README.md) | [中文](README_zh.md)
 
@@ -14,22 +14,22 @@
 
 ---
 
-## ✨ What is this?
+## ✨ 这是什么？
 
-**agenticli** converts functions, classes, and schema-based tools into a stable CLI semantic layer. Instead of flooding prompts with large schemas, LLMs just output a single command string.
+**agenticli** 可以把函数、类和基于 schema 的工具转换成稳定的 CLI 语义层。相比把大段 schema 直接塞进 prompt，LLM 只需要输出一条命令字符串。
 
-> 💡 **Philosophy: bash is everything.** The command string is the most stable, restrained, and observable intermediate representation between LLMs and tool systems.
+> 💡 **设计理念：bash is everything.** 命令字符串是 LLM 与工具系统之间最稳定、最克制、也最容易观察的中间表示。
 
-## 🎯 When to use agenticli?
+## 🎯 适合什么场景？
 
-| Scenario | agenticli helps? |
-|----------|---------------|
-| You have many tools/functions and need a unified interface for LLMs | ✅ |
-| You don't want massive schemas injected into prompts | ✅ |
-| You want models to see minimal hints, expanding via `--help` | ✅ |
-| You want validation, help, errors, and lifecycle in one place | ✅ |
+| 场景 | agenticli 是否适合 |
+|------|-------------------|
+| 你有很多工具/函数，希望给 LLM 一个统一接口 | ✅ |
+| 你不想把大量 schema 注入 prompt | ✅ |
+| 你希望模型先看到极简提示，需要时再通过 `--help` 展开 | ✅ |
+| 你想把校验、帮助、错误提示和生命周期钩子统一到一处 | ✅ |
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
 ```bash
 pip install agenticli
@@ -39,169 +39,179 @@ pip install agenticli
 from typing import Annotated
 from agenticli import CommandRegistry, Option, command, command_group
 
-@command_group(name="calc", description="Calculator commands")
+
+@command_group(name="calc", description="计算器命令")
 class Calc:
-    @command(name="add", description="Add numbers")
-    def add(self,
-        values: Annotated[list[float], Option(positional=True, value_name="n")]
+    @command(name="add", description="求和")
+    def add(
+        self,
+        values: Annotated[list[float], Option(positional=True, value_name="n")],
     ) -> dict:
         return {"result": sum(values)}
+
 
 registry = CommandRegistry()
 registry.register(Calc)
 
-# LLM sees this minimal prompt:
 print(registry.get_llm_prompt())
 # -> You can use the following CLI commands:
-#     calc: Calculator commands
+#     calc: 计算器命令
 
-# Execute:
 registry.parse_and_execute("calc add 10 20 30")
 # -> {"result": 60.0}
 ```
 
-## 🏗️ Core Architecture
+## 🏗️ 核心结构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        LLM Output                            │
+│                        LLM 输出                              │
 │                    "calc add 10 20 30"                      │
 └─────────────────────────┬───────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      CommandRegistry                          │
+│                     CommandRegistry                          │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐  │
 │  │  Parse   │─▶│ Validate │─▶│ Execute  │─▶│   Result   │  │
 │  └──────────┘  └──────────┘  └──────────┘  └────────────┘  │
 │                                                             │
-│  • Command hit/matching      • Lifecycle callbacks          │
-│  • Help generation           • Error with suggestions        │
-│  • Argument injection        • Chain execution (&&, ||, ;)  │
+│  • 命令命中/匹配           • 生命周期回调                   │
+│  • 帮助生成                • 带建议的错误信息               │
+│  • 参数注入                • 链式执行 (&&, ||, ;)          │
 └─────────────────────────────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Your Functions / Tools                    │
+│                    你的函数 / 工具                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📋 Key Features
+## 📋 核心能力
 
-| Feature | Description |
-|---------|-------------|
-| 🔌 **Multiple Registrations** | Decorators, class inheritance, dataclass, Pydantic, schema wrapping |
-| ⚡ **CLI Parsing** | Positional args, `--option value`, `-o value`, `--opt=val`, flags |
-| 📖 **Smart Help** | Auto-generated usage, help text, LLM prompts |
-| ✅ **Validation** | Type coercion, `requires`/`excludes`, enums |
-| 💡 **Suggestions** | "Did you mean X?" for unknown commands/options/enums |
-| 🔄 **Lifecycle Hooks** | `before_execute`, `after_execute`, `on_error` |
-| 🏃 **Internal Injection** | Hide callbacks/state from CLI, inject at runtime |
-| 🔗 **Chain Execution** | `cmd1 && cmd2 || cmd3 ; cmd4` |
+| 能力 | 说明 |
+|------|------|
+| 🔌 **多种注册方式** | 装饰器、类继承、dataclass、Pydantic、schema 包装 |
+| ⚡ **CLI 解析** | 位置参数、`--option value`、`-o value`、`--opt=val`、flag |
+| 📖 **帮助系统** | 自动生成 usage、help 文本和 LLM prompt |
+| ✅ **参数校验** | 类型转换、`requires`/`excludes`、枚举校验 |
+| 💡 **智能建议** | 未知命令、未知选项、枚举值拼写建议 |
+| 🔄 **生命周期钩子** | `before_execute`、`after_execute`、`on_error` |
+| 🏃 **内部注入** | 回调/状态对 CLI 隐藏，但可在运行时注入 |
+| 🔗 **链式执行** | `cmd1 && cmd2 || cmd3 ; cmd4` |
 
-## 📝 Registration Patterns
+## 📝 命令注册方式
 
-### 1️⃣ Decorator (Most Common)
+### 1️⃣ 装饰器模式
 
 ```python
 from typing import Annotated
 from agenticli import command, Option
 
-@command(name="ls", description="List directory")
+
+@command(name="ls", description="列出目录")
 def ls(
-    path: Annotated[str, Option(short='p', description="Directory path")],
-    verbose: Annotated[bool, Option(short='v')] = False,
+    path: Annotated[str, Option(short="p", description="目录路径")],
+    verbose: Annotated[bool, Option(short="v")] = False,
 ) -> list[str]:
     import os
     return os.listdir(path)
 ```
 
-### 2️⃣ Command Group
+### 2️⃣ 命令组
 
 ```python
 from agenticli import command_group, command
 
-@command_group(name="db", description="Database operations")
+
+@command_group(name="db", description="数据库操作")
 class Database:
-    @command(description="Create database")
+    @command(description="创建数据库")
     def create(self, name: str) -> None: ...
 
-    @command(description="Drop database")
+    @command(description="删除数据库")
     def drop(self, name: str) -> None: ...
 ```
 
-### 3️⃣ Wrap Existing Tools
+### 3️⃣ 包装现有工具
 
 ```python
 from agenticli import wrap_tool
 
+
 class MyTool:
     name = "my_tool"
-    description = "Does something"
+    description = "做一些事情"
     parameters = {"type": "object", "properties": {"x": {"type": "int"}}}
-    async def execute(self, **kwargs): return kwargs
+
+    async def execute(self, **kwargs):
+        return kwargs
+
 
 registry.register_spec(wrap_tool(MyTool()))
 ```
 
-### 4️⃣ Class Inheritance
+### 4️⃣ 类继承模式
 
 ```python
 from agenticli import CliCommand, CommandRegistry
 
+
 class AddCommand(CliCommand):
     name = "add"
-    description = "Add numbers"
+    description = "求和"
     args_model = AddArgs
 
     async def run(self, **kwargs) -> dict:
         return {"result": sum(kwargs["values"])}
 
+
 registry.register(AddCommand())
 ```
 
-## 🤖 LLM Integration
+## 🤖 与 LLM 集成
 
-### Minimal Tool Schema
+### 最小工具暴露
 
-Expose only one `exec` tool to the LLM:
+只向 LLM 暴露一个 `exec` 工具：
 
 ```python
 from agenticli import ExecTool
 
 exec_tool = ExecTool(callback=registry.parse_and_execute)
-# Tool schema: {name: "exec", params: {command: string, timeout?: int}}
 ```
 
-### Lifecycle Callbacks
+### 生命周期回调
 
 ```python
 from agenticli import ExecutionCallbacks
 
+
 def on_error(ctx):
     print(f"Error: {ctx.error.code} - {ctx.error.message}")
+
 
 registry = CommandRegistry(
     callbacks=ExecutionCallbacks(on_error=on_error)
 )
 ```
 
-### Internal Parameter Injection
+### 内部参数注入
 
 ```python
 from typing import Annotated
 from agenticli import Callback, State, command
+
 
 @command(name="process")
 def process(
     data: list[str],
     cache: Annotated[object, State(factory=lambda ctx: load_cache())] = None,
 ):
-    # cache is injected automatically, hidden from CLI
     return cached_transform(data, cache)
 ```
 
-## 📦 Stable API
+## 📦 稳定 API
 
 ```python
 # Core
@@ -228,9 +238,9 @@ ExecutionCallbacks
 ExecTool
 ```
 
-## 💡 Examples
+## 💡 示例
 
-See [example/demo.py](example/demo.py) for a complete calc system with OpenAI/Anthropic integration:
+完整的计算器与 OpenAI / Anthropic 集成示例见 [example/demo.py](example/demo.py)：
 
 ```bash
 pip install "agenticli[examples]"
@@ -238,14 +248,14 @@ python -m example.demo --provider openai
 python -m example.demo --provider anthropic
 ```
 
-## 📚 Documentation
+## 📚 文档
 
-| Language | Link |
-|----------|------|
-| 🇺🇸 English README | [README.md](README.md) |
-| 🇨🇳 中文 README | [README_zh.md](README_zh.md) |
-| 🇺🇸 English | [docs/index_en.md](docs/index_en.md) |
-| 🇨🇳 中文 | [docs/index_zh.md](docs/index_zh.md) |
+| 语言 | 链接 |
+|------|------|
+| 🇺🇸 English | [README.md](README.md) |
+| 🇨🇳 中文 | [README_zh.md](README_zh.md) |
+| 🇺🇸 English Docs | [docs/index_en.md](docs/index_en.md) |
+| 🇨🇳 中文文档 | [docs/index_zh.md](docs/index_zh.md) |
 
 ## 📄 License
 
