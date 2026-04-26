@@ -266,6 +266,20 @@ class CommandRegistry:
             return result.value
         return result.error.render() if result.error else "Error: Unknown error"
 
+    async def parse_and_execute_async(self, command_str: str) -> Any:
+        """Asynchronously parse and execute a command.
+
+        Args:
+            command_str: Command string to execute.
+
+        Returns:
+            Command return value if successful, error string if failed.
+        """
+        result = await self.execute_async(command_str)
+        if result.ok:
+            return result.value
+        return result.error.render() if result.error else "Error: Unknown error"
+
     def chain_execute(self, command_str: str) -> list[Any]:
         """Execute multiple commands separated by Unix-style operators.
 
@@ -316,6 +330,58 @@ class CommandRegistry:
 
         if pending_cmd:
             result = self.parse_and_execute(pending_cmd)
+            results.append(result)
+
+        return results
+
+    async def chain_execute_async(self, command_str: str) -> list[Any]:
+        """Asynchronously execute multiple commands separated by Unix-style operators.
+
+        Supports:
+            && - AND: stop if any command fails
+            || - OR: stop if any command succeeds
+            ;  - sequential: execute all commands
+
+        Args:
+            command_str: Command string with commands and operators.
+
+        Returns:
+            List of results from each executed command.
+        """
+        tokens = re.split(r'(\s*(?:&&|\|\||;)\s*)', command_str)
+        tokens = [t.strip() for t in tokens if t.strip()]
+
+        if not tokens:
+            return []
+
+        results = []
+        pending_cmd = tokens[0]
+        i = 1
+
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token in ("&&", "||", ";"):
+                result = await self.parse_and_execute_async(pending_cmd)
+                results.append(result)
+
+                is_error = isinstance(result, str) and result.startswith("Error:")
+                if token == "&&" and is_error:
+                    return results
+                if token == "||" and not is_error:
+                    return results
+
+                pending_cmd = ""
+                i += 1
+            else:
+                if pending_cmd:
+                    pending_cmd += " " + token
+                else:
+                    pending_cmd = token
+                i += 1
+
+        if pending_cmd:
+            result = await self.parse_and_execute_async(pending_cmd)
             results.append(result)
 
         return results
@@ -387,11 +453,22 @@ class CommandRegistry:
         Returns:
             ExecutionResult with ok status, value or error.
         """
+        return run_sync(self.execute_async(command_str))
+
+    async def execute_async(self, command_str: str) -> ExecutionResult:
+        """Asynchronously parse and execute a command string.
+
+        Args:
+            command_str: Command string to execute.
+
+        Returns:
+            ExecutionResult with ok status, value or error.
+        """
         self._ensure_help_command()
         stripped = command_str.strip()
         if not stripped:
             error = CommandError(code="empty_command", message="Empty command")
-            self._run_error_callback(ExecutionContext(command="", raw=command_str, error=error))
+            await self._run_error_callback_async(ExecutionContext(command="", raw=command_str, error=error))
             return ExecutionResult(ok=False, error=error)
         parts = stripped.split()
 
@@ -411,14 +488,14 @@ class CommandRegistry:
                     suggestion=suggestion,
                     subject=parts[0],
                 )
-                self._run_error_callback(ExecutionContext(command=parts[0], raw=command_str, error=error))
+                await self._run_error_callback_async(ExecutionContext(command=parts[0], raw=command_str, error=error))
                 return ExecutionResult(
                     ok=False,
                     command=parts[0],
                     error=error,
                 )
             error = CommandError(code="unknown_command", message="Unknown command", subject=parts[0])
-            self._run_error_callback(ExecutionContext(command=parts[0], raw=command_str, error=error))
+            await self._run_error_callback_async(ExecutionContext(command=parts[0], raw=command_str, error=error))
             return ExecutionResult(
                 ok=False,
                 command=parts[0],
@@ -435,13 +512,13 @@ class CommandRegistry:
         parsed = parser.parse(self._parser_input(command_name, parts))
         if self.strict and parsed.errors:
             error = self._build_parse_error(spec, parsed.errors)
-            self._run_error_callback(
+            await self._run_error_callback_async(
                 ExecutionContext(command=command_name, raw=command_str, args=parsed.args, error=error)
             )
             return ExecutionResult(ok=False, command=command_name, error=self._build_parse_error(spec, parsed.errors))
-        value = self._execute_spec(spec, parsed.args, raw=command_str)
+        value = await self._execute_spec_async(spec, parsed.args, raw=command_str)
         if isinstance(value, CommandError):
-            self._run_error_callback(
+            await self._run_error_callback_async(
                 ExecutionContext(command=command_name, raw=command_str, args=parsed.args, error=value)
             )
             return ExecutionResult(ok=False, command=command_name, error=value)
@@ -519,6 +596,19 @@ class CommandRegistry:
         Returns:
             Command result or CommandError if execution fails.
         """
+        return run_sync(self._execute_spec_async(spec, raw_args, raw=raw))
+
+    async def _execute_spec_async(self, spec: CommandSpec, raw_args: dict[str, Any], *, raw: str) -> Any:
+        """Asynchronously execute a CommandSpec with given arguments.
+
+        Args:
+            spec: Command specification to execute.
+            raw_args: Parsed arguments.
+            raw: Original command string.
+
+        Returns:
+            Command result or CommandError if execution fails.
+        """
         try:
             validator = spec.validator
             sig_args = validator.validate(raw_args) if validator else raw_args
@@ -528,22 +618,22 @@ class CommandRegistry:
             for key, factory in spec.injection_factories.items():
                 produced = factory(context)
                 if inspect.isawaitable(produced):
-                    produced = run_sync(produced)
+                    produced = await produced
                 sig_args[key] = produced
             context.args = dict(sig_args)
-            self._run_before_callback(context)
+            await self._run_before_callback_async(context)
 
             if hasattr(spec, "_group_class") and hasattr(spec, "_method_name"):
                 instance = spec._group_class()  # type: ignore[attr-defined]
                 method = getattr(instance, spec._method_name)  # type: ignore[attr-defined]
-                result = self._resolve_result(method(**sig_args))
+                result = await self._resolve_result_async(method(**sig_args))
                 context.result = result
-                self._run_after_callback(context)
+                await self._run_after_callback_async(context)
                 return result
 
-            result = self._resolve_result(spec.func(**sig_args))
+            result = await self._resolve_result_async(spec.func(**sig_args))
             context.result = result
-            self._run_after_callback(context)
+            await self._run_after_callback_async(context)
             return result
         except Exception as exc:
             return CommandError(code="execution_error", message=f"executing {spec.name}: {exc}", subject=spec.name)
@@ -633,6 +723,14 @@ class CommandRegistry:
             if inspect.isawaitable(result):
                 run_sync(result)
 
+    async def _run_before_callback_async(self, context: ExecutionContext) -> None:
+        """Asynchronously run before_execute callback if configured."""
+        callback = self.callbacks.before_execute
+        if callback:
+            result = callback(context)
+            if inspect.isawaitable(result):
+                await result
+
     def _run_after_callback(self, context: ExecutionContext) -> None:
         """Run after_execute callback if configured.
 
@@ -645,6 +743,14 @@ class CommandRegistry:
             if inspect.isawaitable(result):
                 run_sync(result)
 
+    async def _run_after_callback_async(self, context: ExecutionContext) -> None:
+        """Asynchronously run after_execute callback if configured."""
+        callback = self.callbacks.after_execute
+        if callback:
+            result = callback(context)
+            if inspect.isawaitable(result):
+                await result
+
     def _run_error_callback(self, context: ExecutionContext) -> None:
         """Run on_error callback if configured.
 
@@ -656,6 +762,14 @@ class CommandRegistry:
             result = callback(context)
             if inspect.isawaitable(result):
                 run_sync(result)
+
+    async def _run_error_callback_async(self, context: ExecutionContext) -> None:
+        """Asynchronously run on_error callback if configured."""
+        callback = self.callbacks.on_error
+        if callback:
+            result = callback(context)
+            if inspect.isawaitable(result):
+                await result
 
     def _suggest_option(self, spec: CommandSpec, token: str) -> str | None:
         """Suggest similar option for unknown token.
@@ -689,6 +803,13 @@ class CommandRegistry:
         """
         if inspect.isawaitable(result):
             return run_sync(result)
+        return result
+
+    @staticmethod
+    async def _resolve_result_async(result: Any) -> Any:
+        """Asynchronously resolve a possibly awaitable result."""
+        if inspect.isawaitable(result):
+            return await result
         return result
 
     def render_help(self, command: str | None = None) -> str:

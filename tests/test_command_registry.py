@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from importlib.util import find_spec
 from typing import Annotated, Literal
@@ -20,6 +21,7 @@ from agenticli import (
     command_group,
     wrap_tool,
 )
+from agenticli.tooling import wrap_autogen_tool, wrap_langchain_tool, wrap_openai_tool_schema
 
 
 @command(name="weather", description="Get the weather for a city", aliases=["wx"])
@@ -706,6 +708,99 @@ def test_async_function_command_executes():
     registry.register(ping)
 
     assert registry.parse_and_execute("ping server") == "pong:server"
+
+
+def test_execute_async_returns_structured_success_result():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    result = asyncio.run(registry.execute_async("weather Beijing"))
+    assert result.ok is True
+    assert result.command == "weather"
+    assert result.value == "Beijing:celsius:False"
+    assert result.error is None
+
+
+def test_parse_and_execute_async_returns_value():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    result = asyncio.run(registry.parse_and_execute_async("weather Beijing -u fahrenheit"))
+    assert result == "Beijing:fahrenheit:False"
+
+
+def test_chain_execute_async_supports_operators():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    results = asyncio.run(registry.chain_execute_async("weather Beijing ; weather Shanghai -u kelvin"))
+    assert results == ["Beijing:celsius:False", "Shanghai:kelvin:False"]
+
+
+def test_wrap_langchain_tool_creates_command_spec():
+    class FakeArgs:
+        query: str
+
+    class FakeLangChainTool:
+        name = "search_docs"
+        description = "Search documents"
+        parameters = None
+        args_schema = ExecArgs
+
+        async def ainvoke(self, payload):
+            return {"payload": payload}
+
+    registry = CommandRegistry()
+    registry.register_spec(wrap_langchain_tool(FakeLangChainTool()))
+
+    result = registry.parse_and_execute("search_docs docs")
+    assert result == {"payload": {"command": "docs", "timeout": 60, "sandbox": False}}
+
+
+def test_wrap_autogen_tool_creates_command_spec():
+    class FakeAutoGenTool:
+        schema = {
+            "name": "lookup",
+            "description": "Lookup value",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "top_k": {"type": "integer", "default": 3},
+                },
+                "required": ["query"],
+            },
+        }
+
+        async def run_json(self, args, cancellation_token=None):
+            return {"args": args, "token": cancellation_token}
+
+    registry = CommandRegistry()
+    registry.register_spec(wrap_autogen_tool(FakeAutoGenTool()))
+
+    result = registry.parse_and_execute("lookup --query docs --top_k 5")
+    assert result == {"args": {"query": "docs", "top_k": 5}, "token": None}
+
+
+def test_wrap_openai_tool_schema_creates_command_spec():
+    registry = CommandRegistry()
+    registry.register_spec(
+        wrap_openai_tool_schema(
+            name="sum_numbers",
+            description="Add two integers",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+                "required": ["a", "b"],
+            },
+            handler=lambda a, b: a + b,
+        )
+    )
+
+    assert registry.parse_and_execute("sum_numbers --a 2 --b 3") == 5
 
 
 def test_execution_error_is_wrapped():

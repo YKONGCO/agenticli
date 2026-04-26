@@ -98,6 +98,8 @@ registry.parse_and_execute("calc add 10 20 30")
 | 🔄 **Lifecycle Hooks** | `before_execute`, `after_execute`, `on_error` |
 | 🏃 **Internal Injection** | Hide callbacks/state from CLI, inject at runtime |
 | 🔗 **Chain Execution** | `cmd1 && cmd2 || cmd3 ; cmd4` |
+| ⏳ **Async Execution** | Native `execute_async`, `parse_and_execute_async`, `chain_execute_async` |
+| 🔌 **Tool Import** | Convert LangChain / AutoGen / OpenAI-style tools into `CommandSpec` |
 
 ## 📝 Registration Patterns
 
@@ -201,6 +203,47 @@ def process(
     return cached_transform(data, cache)
 ```
 
+## 🔌 Import External Tools
+
+You can wrap existing framework tools into `agenticli` commands through
+functions in `agenticli.tooling`:
+
+```python
+from agenticli import CommandRegistry
+from agenticli.tooling import (
+    wrap_autogen_tool,
+    wrap_langchain_tool,
+    wrap_openai_tool_schema,
+)
+
+registry = CommandRegistry()
+
+registry.register_spec(wrap_langchain_tool(my_langchain_tool))
+registry.register_spec(wrap_autogen_tool(my_autogen_tool))
+registry.register_spec(
+    wrap_openai_tool_schema(
+        name="search_docs",
+        description="Search docs",
+        parameters={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+        handler=lambda query: {"query": query},
+    )
+)
+```
+
+## ⚡ Async API
+
+`agenticli` now supports native async execution:
+
+```python
+result = await registry.execute_async("calc add 1 2 3")
+value = await registry.parse_and_execute_async("calc add 1 2 3")
+items = await registry.chain_execute_async("cmd1 ; cmd2")
+```
+
 ## 📦 Stable API
 
 ```python
@@ -209,7 +252,11 @@ CommandRegistry
 CommandRegistry.register(target)
 CommandRegistry.register_spec(spec)
 CommandRegistry.execute(command_str)
+CommandRegistry.execute_async(command_str)
 CommandRegistry.parse_and_execute(command_str)
+CommandRegistry.parse_and_execute_async(command_str)
+CommandRegistry.chain_execute(command_str)
+CommandRegistry.chain_execute_async(command_str)
 CommandRegistry.render_help(command)
 CommandRegistry.get_llm_prompt(detailed=False)
 
@@ -222,6 +269,9 @@ CliCommand
 wrap_tool(tool)
 command_from_model(name, model, handler)
 command_from_method(name, target, method_name)
+wrap_langchain_tool(tool)
+wrap_autogen_tool(tool)
+wrap_openai_tool_schema(name, parameters, handler, ...)
 Option
 Injected / Callback / State
 ExecutionCallbacks

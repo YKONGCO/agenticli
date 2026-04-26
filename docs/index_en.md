@@ -65,6 +65,7 @@ Key responsibilities:
 - Auto-generate usage/help/LLM prompt
 - Argument validation and default value filling
 - Execute functions, class commands, and wrapped tools
+- Support native async execution APIs
 - Unified error wrapping and suggestion prompting
 - Support internal injected parameters and execution lifecycle callbacks
 
@@ -170,6 +171,19 @@ registry = CommandRegistry()
 registry.register_spec(wrap_tool(MyTool()))
 ```
 
+### Importing External Framework Tools
+
+Use helpers from `agenticli.tooling` to wrap existing framework tools into
+`CommandSpec` values:
+
+```python
+from agenticli.tooling import (
+    wrap_autogen_tool,
+    wrap_langchain_tool,
+    wrap_openai_tool_schema,
+)
+```
+
 ---
 
 ## API Reference
@@ -199,7 +213,11 @@ registry = CommandRegistry(
 | `has(name)` | Check if command exists |
 | `parse(command_str)` | Parse without executing |
 | `parse_and_execute(command_str)` | Parse and execute, return value or error |
+| `parse_and_execute_async(command_str)` | Async parse and execute |
 | `execute(command_str)` | Execute and return ExecutionResult |
+| `execute_async(command_str)` | Async execute and return ExecutionResult |
+| `chain_execute(command_str)` | Execute a chain of commands |
+| `chain_execute_async(command_str)` | Async execute a chain of commands |
 | `render_help(command)` | Get help text |
 | `get_llm_prompt(detailed)` | Generate LLM context string |
 

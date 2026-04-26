@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from itertools import product
 from typing import Annotated
@@ -273,6 +274,33 @@ def test_async_execution_callbacks_and_async_injection_factory_work():
     assert events[0] == ("before", {"value": 9, "state": {"raw": "async-deps 9"}})
     assert events[1] == ("after", (9, {"raw": "async-deps 9"}))
     assert events[2] == ("error", "unknown_command")
+
+
+def test_async_api_awaits_callbacks_and_injection_factory_without_sync_bridge():
+    events: list[tuple[str, object]] = []
+
+    async def before(ctx):
+        events.append(("before", dict(ctx.args)))
+
+    async def after(ctx):
+        events.append(("after", ctx.result))
+
+    @command(name="async-native")
+    async def async_native(
+        value: Annotated[int, Option(positional=True)],
+        state: Annotated[object, Option(internal=True, inject_factory=_module_async_state)] = None,
+    ) -> tuple[int, object]:
+        return value, state
+
+    registry = CommandRegistry(
+        callbacks=ExecutionCallbacks(before_execute=before, after_execute=after)
+    )
+    registry.register(async_native)
+
+    result = asyncio.run(registry.parse_and_execute_async("async-native 5"))
+    assert result == (5, {"raw": "async-native 5"})
+    assert events[0] == ("before", {"value": 5, "state": {"raw": "async-native 5"}})
+    assert events[1] == ("after", (5, {"raw": "async-native 5"}))
 
 
 def test_local_injection_factory_name_fails_under_future_annotations():

@@ -65,6 +65,7 @@ print(registry.parse_and_execute("calc add 10 20 30"))
 - 自动生成 usage/help/LLM prompt
 - 参数验证和默认值填充
 - 执行函数、类命令和包装后的 tool
+- 支持原生异步执行 API
 - 统一错误包装和建议提示
 - 支持内部注入参数和执行生命周期回调
 
@@ -170,6 +171,19 @@ registry = CommandRegistry()
 registry.register_spec(wrap_tool(MyTool()))
 ```
 
+### 导入外部框架工具
+
+如果你已经有 LangChain、AutoGen 或 OpenAI 风格的工具定义，可以通过
+`agenticli.tooling` 里的包装函数把它们转成 `CommandSpec`：
+
+```python
+from agenticli.tooling import (
+    wrap_autogen_tool,
+    wrap_langchain_tool,
+    wrap_openai_tool_schema,
+)
+```
+
 ---
 
 ## API 参考
@@ -199,7 +213,11 @@ registry = CommandRegistry(
 | `has(name)` | 检查命令是否存在 |
 | `parse(command_str)` | 解析但不执行 |
 | `parse_and_execute(command_str)` | 解析并执行，返回值或错误 |
+| `parse_and_execute_async(command_str)` | 异步解析并执行 |
 | `execute(command_str)` | 执行并返回 ExecutionResult |
+| `execute_async(command_str)` | 异步执行并返回 ExecutionResult |
+| `chain_execute(command_str)` | 执行命令链 |
+| `chain_execute_async(command_str)` | 异步执行命令链 |
 | `render_help(command)` | 获取帮助文本 |
 | `get_llm_prompt(detailed)` | 生成 LLM 上下文字符串 |
 

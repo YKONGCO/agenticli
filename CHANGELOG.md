@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-04-27
+
+### Added
+- Native async execution APIs: `execute_async`, `parse_and_execute_async`, and `chain_execute_async`
+- Tool import helpers in `agenticli.tooling`: `wrap_langchain_tool`, `wrap_autogen_tool`, and `wrap_openai_tool_schema`
+
+### Changed
+- Updated README and docs to reflect async support and external tool wrapping
+
+### Removed
+- Removed the experimental `src/agenticli/integrations` adapter directory in favor of tooling-level wrappers
+
 ## [0.1.2] - 2026-04-27
 
 ### Changed
@@ -69,7 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` for shell command execution
 
-[Unreleased]: https://github.com/your-repo/agenticli/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/your-repo/agenticli/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/your-repo/agenticli/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/your-repo/agenticli/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/your-repo/agenticli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/your-repo/agenticli/releases/tag/v0.1.0

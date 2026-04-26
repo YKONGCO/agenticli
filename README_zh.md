@@ -99,6 +99,8 @@ registry.parse_and_execute("calc add 10 20 30")
 | 🔄 **生命周期钩子** | `before_execute`、`after_execute`、`on_error` |
 | 🏃 **内部注入** | 回调/状态对 CLI 隐藏，但可在运行时注入 |
 | 🔗 **链式执行** | `cmd1 && cmd2 || cmd3 ; cmd4` |
+| ⏳ **异步执行** | 原生支持 `execute_async`、`parse_and_execute_async`、`chain_execute_async` |
+| 🔌 **外部工具导入** | 可将 LangChain / AutoGen / OpenAI 风格工具包装成 `CommandSpec` |
 
 ## 📝 命令注册方式
 
@@ -211,6 +213,47 @@ def process(
     return cached_transform(data, cache)
 ```
 
+## 🔌 导入外部工具
+
+可以通过 `agenticli.tooling` 中的包装函数，把外部框架已有工具导入为
+`agenticli` 命令：
+
+```python
+from agenticli import CommandRegistry
+from agenticli.tooling import (
+    wrap_autogen_tool,
+    wrap_langchain_tool,
+    wrap_openai_tool_schema,
+)
+
+registry = CommandRegistry()
+
+registry.register_spec(wrap_langchain_tool(my_langchain_tool))
+registry.register_spec(wrap_autogen_tool(my_autogen_tool))
+registry.register_spec(
+    wrap_openai_tool_schema(
+        name="search_docs",
+        description="搜索文档",
+        parameters={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        },
+        handler=lambda query: {"query": query},
+    )
+)
+```
+
+## ⚡ 异步 API
+
+`agenticli` 现在支持原生异步执行：
+
+```python
+result = await registry.execute_async("calc add 1 2 3")
+value = await registry.parse_and_execute_async("calc add 1 2 3")
+items = await registry.chain_execute_async("cmd1 ; cmd2")
+```
+
 ## 📦 稳定 API
 
 ```python
@@ -219,7 +262,11 @@ CommandRegistry
 CommandRegistry.register(target)
 CommandRegistry.register_spec(spec)
 CommandRegistry.execute(command_str)
+CommandRegistry.execute_async(command_str)
 CommandRegistry.parse_and_execute(command_str)
+CommandRegistry.parse_and_execute_async(command_str)
+CommandRegistry.chain_execute(command_str)
+CommandRegistry.chain_execute_async(command_str)
 CommandRegistry.render_help(command)
 CommandRegistry.get_llm_prompt(detailed=False)
 
@@ -232,6 +279,9 @@ CliCommand
 wrap_tool(tool)
 command_from_model(name, model, handler)
 command_from_method(name, target, method_name)
+wrap_langchain_tool(tool)
+wrap_autogen_tool(tool)
+wrap_openai_tool_schema(name, parameters, handler, ...)
 Option
 Injected / Callback / State
 ExecutionCallbacks
