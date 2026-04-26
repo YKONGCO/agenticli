@@ -1,6 +1,6 @@
-"""Type definitions for llmcli.
+"""Type definitions for agenticli.
 
-This module provides the core type definitions used throughout the llmcli package,
+This module provides the core type definitions used throughout the agenticli package,
 including data classes for arguments, commands, execution results, and error handling.
 """
 

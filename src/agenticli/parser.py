@@ -10,7 +10,7 @@ from __future__ import annotations
 import shlex
 from typing import Any
 
-from llmcli.types import ArgSpec, ParseResult
+from agenticli.types import ArgSpec, ParseResult
 
 
 class CommandParser:

@@ -16,13 +16,13 @@
 ### 安装
 
 ```bash
-pip install llmcli
+pip install agenticli
 ```
 
 如需 Pydantic v2 支持：
 
 ```bash
-pip install "llmcli[pydantic]"
+pip install "agenticli[pydantic]"
 ```
 
 ### 最小示例
@@ -30,7 +30,7 @@ pip install "llmcli[pydantic]"
 ```python
 from typing import Annotated
 
-from llmcli import CommandRegistry, Option, command, command_group
+from agenticli import CommandRegistry, Option, command, command_group
 
 
 @command_group(name="calc", description="结构化计算器命令")
@@ -56,7 +56,7 @@ print(registry.parse_and_execute("calc add 10 20 30"))
 
 ### CommandRegistry
 
-`CommandRegistry` 是 llmcli 的核心组件。它管理命令的注册、解析、执行和帮助生成。
+`CommandRegistry` 是 agenticli 的核心组件。它管理命令的注册、解析、执行和帮助生成。
 
 主要职责：
 - 注册命令和命令组
@@ -88,7 +88,7 @@ command string -> parse -> validate -> execute -> result
 ```python
 from typing import Annotated
 
-from llmcli import command, Option
+from agenticli import command, Option
 
 @command(name="ls", description="列出目录内容")
 def list_dir(
@@ -108,7 +108,7 @@ def list_dir(
 使用 `@command_group` 创建带有子命令的组：
 
 ```python
-from llmcli import command_group, command
+from agenticli import command_group, command
 
 @command_group(name="db", description="数据库操作")
 class Database:
@@ -127,7 +127,7 @@ class Database:
 
 ```python
 from dataclasses import dataclass
-from llmcli import CliCommand, CommandRegistry
+from agenticli import CliCommand, CommandRegistry
 
 @dataclass
 class AddArgs:
@@ -150,7 +150,7 @@ registry.register(AddCommand())
 使用 `wrap_tool()` 转换基于 schema 的工具：
 
 ```python
-from llmcli import CommandRegistry, wrap_tool
+from agenticli import CommandRegistry, wrap_tool
 
 class MyTool:
     name = "my_tool"
@@ -256,7 +256,7 @@ class MyGroup:
 
 ```python
 from typing import Annotated
-from llmcli import Option
+from agenticli import Option
 
 def cmd(
     file: Annotated[str, Option(
@@ -283,7 +283,7 @@ def cmd(
 
 ```python
 from typing import Annotated
-from llmcli import Injected, Callback, State
+from agenticli import Injected, Callback, State
 
 def cmd(
     arg: str,
@@ -300,7 +300,7 @@ def cmd(
 通过回调执行命令。
 
 ```python
-from llmcli import ExecTool, CommandRegistry
+from agenticli import ExecTool, CommandRegistry
 
 def execute_callback(command: str, **kwargs):
     return subprocess.run(command, shell=True, timeout=kwargs.get("timeout", 60))

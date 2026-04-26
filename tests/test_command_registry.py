@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from importlib.util import find_spec
 from typing import Annotated, Literal
 
-from llmcli import (
+from agenticli import (
     Callback,
     CliCommand,
     CommandError,

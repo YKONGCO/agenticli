@@ -12,9 +12,9 @@ import inspect
 import re
 from typing import Any
 
-from llmcli.parser import CommandParser
-from llmcli.tooling import CliCommand, run_sync, wrap_tool
-from llmcli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
+from agenticli.parser import CommandParser
+from agenticli.tooling import CliCommand, run_sync, wrap_tool
+from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
 
 
 class CommandRegistry:

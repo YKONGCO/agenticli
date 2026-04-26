@@ -16,13 +16,13 @@ Welcome to the agenticli documentation. This page provides an overview of the ag
 ### Installation
 
 ```bash
-pip install llmcli
+pip install agenticli
 ```
 
 For Pydantic v2 support:
 
 ```bash
-pip install "llmcli[pydantic]"
+pip install "agenticli[pydantic]"
 ```
 
 ### Minimal Example
@@ -30,7 +30,7 @@ pip install "llmcli[pydantic]"
 ```python
 from typing import Annotated
 
-from llmcli import CommandRegistry, Option, command, command_group
+from agenticli import CommandRegistry, Option, command, command_group
 
 
 @command_group(name="calc", description="Structured calculator commands")
@@ -56,7 +56,7 @@ print(registry.parse_and_execute("calc add 10 20 30"))
 
 ### CommandRegistry
 
-The `CommandRegistry` is the central component of llmcli. It manages command registration, parsing, execution, and help generation.
+The `CommandRegistry` is the central component of agenticli. It manages command registration, parsing, execution, and help generation.
 
 Key responsibilities:
 - Register commands and command groups
@@ -88,7 +88,7 @@ Use `@command` to register a function as a CLI command:
 ```python
 from typing import Annotated
 
-from llmcli import command, Option
+from agenticli import command, Option
 
 @command(name="ls", description="List directory contents")
 def list_dir(
@@ -108,7 +108,7 @@ def list_dir(
 Use `@command_group` to create a group with subcommands:
 
 ```python
-from llmcli import command_group, command
+from agenticli import command_group, command
 
 @command_group(name="db", description="Database operations")
 class Database:
@@ -127,7 +127,7 @@ Inherit from `CliCommand` for class-based commands:
 
 ```python
 from dataclasses import dataclass
-from llmcli import CliCommand, CommandRegistry
+from agenticli import CliCommand, CommandRegistry
 
 @dataclass
 class AddArgs:
@@ -150,7 +150,7 @@ registry.register(AddCommand())
 Use `wrap_tool()` to convert schema-based tools:
 
 ```python
-from llmcli import CommandRegistry, wrap_tool
+from agenticli import CommandRegistry, wrap_tool
 
 class MyTool:
     name = "my_tool"
@@ -256,7 +256,7 @@ Per-argument CLI metadata for type annotations.
 
 ```python
 from typing import Annotated
-from llmcli import Option
+from agenticli import Option
 
 def cmd(
     file: Annotated[str, Option(
@@ -283,7 +283,7 @@ Mark parameters as internal injections.
 
 ```python
 from typing import Annotated
-from llmcli import Injected, Callback, State
+from agenticli import Injected, Callback, State
 
 def cmd(
     arg: str,
@@ -300,7 +300,7 @@ def cmd(
 Execute commands through a callback.
 
 ```python
-from llmcli import ExecTool, CommandRegistry
+from agenticli import ExecTool, CommandRegistry
 
 def execute_callback(command: str, **kwargs):
     return subprocess.run(command, shell=True, timeout=kwargs.get("timeout", 60))

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-27
+
+### Changed
+- Unified all package imports and internal module references to `agenticli`
+- Updated tests, examples, and documentation to use `agenticli` consistently
+
+### Added
+- Added `tests/conftest.py` so the package imports correctly in the `src` layout during test runs
+
 ## [0.1.1] - Package Rename
 
 ### Changed
@@ -60,5 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` for shell command execution
 
-[Unreleased]: https://github.com/your-repo/agenticli/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/your-repo/agenticli/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/your-repo/agenticli/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/your-repo/agenticli/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/your-repo/agenticli/releases/tag/v0.1.0

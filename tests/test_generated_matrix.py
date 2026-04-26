@@ -6,8 +6,8 @@ from typing import Annotated
 
 import pytest
 
-from llmcli import CliCommand, CommandRegistry, ExecutionCallbacks, Option, command, command_from_model, command_group, wrap_tool
-from llmcli.validation import build_adapter
+from agenticli import CliCommand, CommandRegistry, ExecutionCallbacks, Option, command, command_from_model, command_group, wrap_tool
+from agenticli.validation import build_adapter
 
 
 @command(name="coerce")

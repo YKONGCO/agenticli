@@ -10,8 +10,8 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any, Callable
 
-from llmcli.types import CommandSpec
-from llmcli.validation import build_adapter
+from agenticli.types import CommandSpec
+from agenticli.validation import build_adapter
 
 
 _COMMAND_REGISTRY: list[CommandSpec] = []

@@ -1,11 +1,11 @@
-"""llmcli - expose tools as lightweight CLI commands for LLMs.
+"""agenticli - expose tools as lightweight CLI commands for LLMs.
 
 This package provides a framework for defining CLI commands that can be
 parsed and executed by LLMs. It supports multiple command definition styles
 including decorators, class inheritance, and schema-based wrapping.
 
 Typical usage:
-    from llmcli import CommandRegistry, command
+    from agenticli import CommandRegistry, command
 
     registry = CommandRegistry()
 
@@ -42,12 +42,12 @@ Exports:
     wrap_tool: Wrap a schema-based tool as a command.
 """
 
-from llmcli.builtin import ExecTool
-from llmcli.core import CommandRegistry
-from llmcli.decorators import clear_commands, command, command_group, get_registered_commands
-from llmcli.tooling import CliCommand, command_from_method, command_from_model, wrap_tool
-from llmcli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
-from llmcli.validation import Callback, Injected, Option, State
+from agenticli.builtin import ExecTool
+from agenticli.core import CommandRegistry
+from agenticli.decorators import clear_commands, command, command_group, get_registered_commands
+from agenticli.tooling import CliCommand, command_from_method, command_from_model, wrap_tool
+from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
+from agenticli.validation import Callback, Injected, Option, State
 
 __all__ = [
     "ArgSpec",

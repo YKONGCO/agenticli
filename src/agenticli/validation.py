@@ -1,7 +1,7 @@
-"""Validation backends for llmcli commands.
+"""Validation backends for agenticli commands.
 
 This module provides various validation adapters that convert Python function
-signatures, dataclasses, Pydantic models, or JSON schemas into llmcli-compatible
+signatures, dataclasses, Pydantic models, or JSON schemas into agenticli-compatible
 argument specifications with full type coercion and validation logic.
 """
 
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from dataclasses import MISSING, fields, is_dataclass
 from typing import Annotated, Any, Literal, get_args, get_origin, get_type_hints
 
-from llmcli.types import ArgSpec
+from agenticli.types import ArgSpec
 
 try:
     from pydantic import BaseModel

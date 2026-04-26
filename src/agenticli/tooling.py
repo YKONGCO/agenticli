@@ -11,8 +11,8 @@ import inspect
 from dataclasses import is_dataclass
 from typing import Any
 
-from llmcli.types import CommandSpec
-from llmcli.validation import build_adapter
+from agenticli.types import CommandSpec
+from agenticli.validation import build_adapter
 
 try:
     from pydantic import BaseModel
@@ -114,7 +114,7 @@ def wrap_tool(
     hidden: bool = False,
     deprecated: str | None = None,
 ) -> CommandSpec:
-    """Wrap a schema-based tool object as an llmcli command.
+    """Wrap a schema-based tool object as an agenticli command.
 
     Converts an object with execute() method and parameters schema into
     a CommandSpec that can be registered in CommandRegistry.

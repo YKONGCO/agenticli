@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from example import demo
-from llmcli import ExecTool
+from agenticli import ExecTool
 
 
 class _OpenAIFunction:

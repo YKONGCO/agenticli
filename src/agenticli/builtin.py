@@ -1,6 +1,6 @@
-"""Builtin tools for llmcli.
+"""Builtin tools for agenticli.
 
-This module provides built-in command tools that ship with llmcli,
+This module provides built-in command tools that ship with agenticli,
 including the ExecTool for executing shell commands through a callback.
 """
 

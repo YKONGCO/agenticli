@@ -341,7 +341,7 @@ async def run_anthropic_demo() -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the shared llmcli calc demo against a provider SDK.")
+    parser = argparse.ArgumentParser(description="Run the shared agenticli calc demo against a provider SDK.")
     parser.add_argument(
         "--provider",
         choices=("openai", "anthropic"),
