@@ -9,6 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
+[![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://pypi.org/project/agenticli/#history)
 
 </div>
 
