@@ -61,11 +61,12 @@ print(registry.parse_and_execute("calc add 10 20 30"))
 主要职责：
 - 注册命令和命令组
 - 命令命中检测和匹配
-- 解析位置参数、长参数、短参数、布尔 flag 和紧凑参数形式
+- 解析位置参数、带引号参数、长参数、短参数、布尔 flag 和紧凑参数形式
 - 自动生成 usage/help/LLM prompt
 - 参数验证和默认值填充
 - 执行函数、类命令和包装后的 tool
 - 支持原生异步执行 API
+- 支持反斜杠换行续行和引号感知的命令链拆分
 - 统一错误包装和建议提示
 - 支持内部注入参数和执行生命周期回调
 
@@ -183,6 +184,50 @@ from agenticli.tooling import (
     wrap_openai_tool_schema,
 )
 ```
+
+---
+
+## 命令语法
+
+### 带引号参数
+
+参数使用 shell 风格引号拆分：
+
+```bash
+weather "New York" --unit fahrenheit
+say 'single quoted text'
+say "arg with \"nested\" quotes"
+```
+
+引号内的空格会保留在同一个参数中。
+
+### 反斜杠续行
+
+反斜杠后紧跟 LF 或 CRLF 时，会在解析前被规范化为空格：
+
+```bash
+weather "New York" \
+  --unit fahrenheit
+```
+
+等价于：
+
+```bash
+weather "New York" --unit fahrenheit
+```
+
+### 命令链操作符与引号
+
+`chain_execute()` 和 `chain_execute_async()` 支持 `;`、`&&` 和 `||`。
+命令链拆分会尊重引号，因此引号内的操作符不会拆分命令：
+
+```bash
+registry.chain_execute('say "hello ; world" ; say done')
+registry.chain_execute('say "hello && world" && say ok')
+```
+
+单个管道符 `|`、重定向、glob 展开、变量展开和命令替换不会由
+agenticli 进行 shell 展开。
 
 ---
 
@@ -384,6 +429,9 @@ registry.chain_execute("cmd1 && cmd2")
 
 # OR：任何一个成功则停止
 registry.chain_execute("cmd1 || cmd2")
+
+# 引号内的操作符会作为参数文本处理
+registry.chain_execute('cmd1 "literal && text" ; cmd2')
 ```
 
 ---

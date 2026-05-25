@@ -103,8 +103,21 @@ class CommandParser:
             True
         """
         parts = shlex.split(command_str.strip())
+        return self.parse_tokens(parts, raw=command_str)
+
+    def parse_tokens(self, parts: list[str], *, raw: str | None = None) -> ParseResult:
+        """Parse pre-tokenized command parts into structured arguments.
+
+        Args:
+            parts: Shell-style tokens, including the local command name at index 0.
+            raw: Original command string, if available.
+
+        Returns:
+            ParseResult containing parsed command name, arguments, and any errors.
+        """
+        raw_text = raw if raw is not None else shlex.join(parts)
         if not parts:
-            return ParseResult(command="", args={}, raw=command_str)
+            return ParseResult(command="", args={}, raw=raw_text)
 
         command = parts[0]
         tokens = parts[1:]
@@ -198,7 +211,7 @@ class CommandParser:
             for value in positional_values[positional_index:]:
                 errors.append(f"unexpected positional argument: {value}")
 
-        return ParseResult(command=command, args=args, raw=command_str, errors=errors)
+        return ParseResult(command=command, args=args, raw=raw_text, errors=errors)
 
     @staticmethod
     def _parse_long_option(token: str) -> tuple[str, str | None]:

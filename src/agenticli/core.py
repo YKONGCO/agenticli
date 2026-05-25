@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import inspect
 import re
+import shlex
 from typing import Any
 
 from agenticli.parser import CommandParser
@@ -237,7 +238,8 @@ class CommandRegistry:
             ParseResult if command found, None if not recognized.
         """
         self._ensure_help_command()
-        parts = command_str.strip().split()
+        command_str = self._preprocess_command_input(command_str)
+        parts = shlex.split(command_str.strip())
         if not parts:
             return None
         help_target = self._extract_help_target(parts)
@@ -247,8 +249,7 @@ class CommandRegistry:
         if not spec:
             return None
         parser = CommandParser(spec.args)
-        raw_for_parser = self._parser_input(command_name, parts)
-        return parser.parse(raw_for_parser)
+        return parser.parse_tokens(self._parser_parts(command_name, parts), raw=command_str)
 
     def parse_and_execute(self, command_str: str) -> Any:
         """Parse and execute a command, returning value or error message.
@@ -294,10 +295,8 @@ class CommandRegistry:
         Returns:
             List of results from each executed command.
         """
-        import re
-
-        tokens = re.split(r'(\s*(?:&&|\|\||;)\s*)', command_str)
-        tokens = [t.strip() for t in tokens if t.strip()]
+        command_str = self._preprocess_command_input(command_str)
+        tokens = self._split_chain_tokens(command_str)
 
         if not tokens:
             return []
@@ -348,8 +347,8 @@ class CommandRegistry:
         Returns:
             List of results from each executed command.
         """
-        tokens = re.split(r'(\s*(?:&&|\|\||;)\s*)', command_str)
-        tokens = [t.strip() for t in tokens if t.strip()]
+        command_str = self._preprocess_command_input(command_str)
+        tokens = self._split_chain_tokens(command_str)
 
         if not tokens:
             return []
@@ -395,10 +394,8 @@ class CommandRegistry:
         Returns:
             List of HitResult for each command in the chain.
         """
-        import re
-
-        tokens = re.split(r'(\s*(?:&&|\|\||;)\s*)', command_str)
-        tokens = [t.strip() for t in tokens if t.strip()]
+        command_str = self._preprocess_command_input(command_str)
+        tokens = self._split_chain_tokens(command_str)
 
         if not tokens:
             return []
@@ -465,12 +462,13 @@ class CommandRegistry:
             ExecutionResult with ok status, value or error.
         """
         self._ensure_help_command()
+        command_str = self._preprocess_command_input(command_str)
         stripped = command_str.strip()
         if not stripped:
             error = CommandError(code="empty_command", message="Empty command")
             await self._run_error_callback_async(ExecutionContext(command="", raw=command_str, error=error))
             return ExecutionResult(ok=False, error=error)
-        parts = stripped.split()
+        parts = shlex.split(stripped)
 
         if parts[0].startswith('/'):
             parts[0] = parts[0][1:]
@@ -509,7 +507,7 @@ class CommandRegistry:
             return ExecutionResult(ok=True, command=command_name, value=self.render_help(command_name))
 
         parser = CommandParser(spec.args)
-        parsed = parser.parse(self._parser_input(command_name, parts))
+        parsed = parser.parse_tokens(self._parser_parts(command_name, parts), raw=command_str)
         if self.strict and parsed.errors:
             error = self._build_parse_error(spec, parsed.errors)
             await self._run_error_callback_async(
@@ -535,9 +533,114 @@ class CommandRegistry:
         Returns:
             String suitable for CommandParser.parse().
         """
-        consumed = len(command_name.split())
-        parser_name = command_name.split()[-1]
-        return " ".join([parser_name, *parts[consumed:]])
+        return shlex.join(CommandRegistry._parser_parts(command_name, parts))
+
+    @staticmethod
+    def _parser_parts(command_name: str, parts: list[str]) -> list[str]:
+        """Prepare tokenized input for CommandParser."""
+        command_parts = command_name.split()
+        consumed = len(command_parts)
+        return [command_parts[-1], *parts[consumed:]]
+
+    @staticmethod
+    def _preprocess_command_input(command_str: str) -> str:
+        """Apply command-level preprocessing before parsing or chain splitting."""
+        return CommandRegistry._preprocess_backslash(command_str)
+
+    @staticmethod
+    def _preprocess_backslash(command_str: str) -> str:
+        """Handle backslash line continuations."""
+        if "\\\n" not in command_str and "\\\r" not in command_str:
+            return command_str
+
+        result: list[str] = []
+        i = 0
+
+        while i < len(command_str):
+            ch = command_str[i]
+
+            if ch == "\\" and i + 1 < len(command_str):
+                next_ch = command_str[i + 1]
+
+                if next_ch == "\n":
+                    result.append(" ")
+                    i += 2
+                    continue
+
+                if next_ch == "\r":
+                    result.append(" ")
+                    i += 2
+                    if i < len(command_str) and command_str[i] == "\n":
+                        i += 1
+                    continue
+
+            result.append(ch)
+            i += 1
+
+        return "".join(result)
+
+    @staticmethod
+    def _split_chain_tokens(command_str: str) -> list[str]:
+        """Split command chains on operators while respecting shell-style quotes."""
+        tokens: list[str] = []
+        current: list[str] = []
+        quote: str | None = None
+        escaped = False
+        i = 0
+
+        while i < len(command_str):
+            ch = command_str[i]
+
+            if escaped:
+                current.append(ch)
+                escaped = False
+                i += 1
+                continue
+
+            if ch == "\\":
+                current.append(ch)
+                escaped = True
+                i += 1
+                continue
+
+            if quote:
+                current.append(ch)
+                if ch == quote:
+                    quote = None
+                i += 1
+                continue
+
+            if ch in {"'", '"'}:
+                current.append(ch)
+                quote = ch
+                i += 1
+                continue
+
+            if command_str.startswith("&&", i) or command_str.startswith("||", i):
+                command = "".join(current).strip()
+                if command:
+                    tokens.append(command)
+                tokens.append(command_str[i : i + 2])
+                current = []
+                i += 2
+                continue
+
+            if ch == ";":
+                command = "".join(current).strip()
+                if command:
+                    tokens.append(command)
+                tokens.append(";")
+                current = []
+                i += 1
+                continue
+
+            current.append(ch)
+            i += 1
+
+        command = "".join(current).strip()
+        if command:
+            tokens.append(command)
+        return tokens
 
     def _resolve_command(self, parts: list[str]) -> tuple[str, CommandSpec | None]:
         """Resolve command name from parts.
@@ -559,8 +662,12 @@ class CommandRegistry:
         if parts[0] in self._commands:
             return parts[0], self._commands[parts[0]]
         if self.allow_prefix_match:
+            token = parts[0]
+            token_initial = token[0]
             for name, spec in self._commands.items():
-                if name.startswith(parts[0]) or parts[0].startswith(name):
+                if not name or name[0] != token_initial:
+                    continue
+                if name.startswith(token) or token.startswith(name):
                     return name, spec
         return parts[0], None
 
@@ -930,10 +1037,15 @@ class CommandRegistry:
         if not text:
             return HitResult(command=None, confidence=0.0)
 
-        command_name, spec = self._resolve_command(text.split())
+        try:
+            parts = shlex.split(text)
+        except ValueError:
+            parts = text.split()
+
+        command_name, spec = self._resolve_command(parts)
         if spec:
             args_str = text[len(command_name):].strip() or None
-            match_type = "exact" if text.split()[0] == command_name.split()[0] else "prefix"
+            match_type = "exact" if parts and parts[0] == command_name.split()[0] else "prefix"
             return HitResult(command=command_name, confidence=1.0 if match_type == "exact" else 0.8, args_str=args_str, match_type=match_type)
 
         if text.startswith("/"):

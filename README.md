@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -93,13 +93,13 @@ registry.parse_and_execute("calc add 10 20 30")
 | Feature | Description |
 |---------|-------------|
 | 🔌 **Multiple Registrations** | Decorators, class inheritance, dataclass, Pydantic, schema wrapping |
-| ⚡ **CLI Parsing** | Positional args, `--option value`, `-o value`, `--opt=val`, flags |
+| ⚡ **CLI Parsing** | Positional args, quoted args, `--option value`, `-o value`, `--opt=val`, flags |
 | 📖 **Smart Help** | Auto-generated usage, help text, LLM prompts |
 | ✅ **Validation** | Type coercion, `requires`/`excludes`, enums |
 | 💡 **Suggestions** | "Did you mean X?" for unknown commands/options/enums |
 | 🔄 **Lifecycle Hooks** | `before_execute`, `after_execute`, `on_error` |
 | 🏃 **Internal Injection** | Hide callbacks/state from CLI, inject at runtime |
-| 🔗 **Chain Execution** | `cmd1 && cmd2 || cmd3 ; cmd4` |
+| 🔗 **Chain Execution** | Quote-aware `cmd1 && cmd2 || cmd3 ; cmd4` |
 | ⏳ **Async Execution** | Native `execute_async`, `parse_and_execute_async`, `chain_execute_async` |
 | 🔌 **Tool Import** | Convert LangChain / AutoGen / OpenAI-style tools into `CommandSpec` |
 
@@ -244,6 +244,31 @@ registry.register_spec(
 result = await registry.execute_async("calc add 1 2 3")
 value = await registry.parse_and_execute_async("calc add 1 2 3")
 items = await registry.chain_execute_async("cmd1 ; cmd2")
+```
+
+## 🧾 Command Syntax
+
+Command parsing uses shell-style quoting for arguments:
+
+```bash
+weather "New York" --unit fahrenheit
+say 'single quoted text'
+say "arg with \"nested\" quotes"
+```
+
+Backslash-newline continuations are normalized before parsing:
+
+```bash
+weather "New York" \
+  --unit fahrenheit
+```
+
+Command chains support `;`, `&&`, and `||`. Operators inside quotes stay part
+of the argument instead of splitting the chain:
+
+```bash
+say "hello ; world" ; say done
+say "hello && world" && say ok
 ```
 
 ## 📦 Stable API

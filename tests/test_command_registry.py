@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from importlib.util import find_spec
 from typing import Annotated, Literal
@@ -21,6 +22,7 @@ from agenticli import (
     command_group,
     wrap_tool,
 )
+from agenticli.parser import CommandParser
 from agenticli.tooling import wrap_autogen_tool, wrap_langchain_tool, wrap_openai_tool_schema
 
 
@@ -455,6 +457,93 @@ def test_parse_supports_normal_command():
     assert parsed.errors == []
 
 
+def test_parse_preserves_quoted_argument_with_spaces():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    parsed = registry.parse('weather "New York" --unit fahrenheit')
+
+    assert parsed is not None
+    assert parsed.args == {"city": "New York", "unit": "fahrenheit"}
+    assert parsed.errors == []
+
+
+def test_command_parser_parse_tokens_matches_string_parse():
+    parser = CommandParser(weather.__command_spec__.args)
+
+    parsed = parser.parse_tokens(["weather", "New York", "--unit", "fahrenheit"], raw='weather "New York" --unit fahrenheit')
+
+    assert parsed.command == "weather"
+    assert parsed.args == {"city": "New York", "unit": "fahrenheit"}
+    assert parsed.raw == 'weather "New York" --unit fahrenheit'
+    assert parsed.errors == []
+
+
+def test_execute_preserves_quoted_argument_with_spaces():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    result = registry.parse_and_execute('weather "New York" --unit fahrenheit')
+
+    assert result == "New York:fahrenheit:False"
+
+
+def test_execute_preserves_mixed_quotes_and_escaped_quotes():
+    @command(name="say")
+    def say(text: Annotated[str, Option(positional=True)]) -> str:
+        return text
+
+    registry = CommandRegistry()
+    registry.register(say)
+
+    assert registry.parse_and_execute("""say "arg with \\"nested\\" quotes" """) == 'arg with "nested" quotes'
+    assert registry.parse_and_execute("""say "a'b'c" """) == "a'b'c"
+    assert registry.parse_and_execute("""say 'single quoted text' """) == "single quoted text"
+
+
+def test_parse_preprocesses_backslash_line_continuation():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    parsed = registry.parse("weather Beijing \\\n-u fahrenheit")
+
+    assert parsed is not None
+    assert parsed.args == {"city": "Beijing", "unit": "fahrenheit"}
+    assert parsed.errors == []
+
+
+def test_parse_preprocesses_backslash_line_continuation_to_space():
+    @command(name="collect")
+    def collect(items: Annotated[list[str], Option(positional=True)]) -> list[str]:
+        return items
+
+    registry = CommandRegistry()
+    registry.register(collect)
+
+    assert registry.parse_and_execute("collect hello\\\nworld") == ["hello", "world"]
+
+
+def test_parse_combines_backslash_continuation_with_quoted_arguments():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    parsed = registry.parse('weather "New York" \\\n--unit fahrenheit')
+
+    assert parsed is not None
+    assert parsed.args == {"city": "New York", "unit": "fahrenheit"}
+    assert parsed.errors == []
+
+
+def test_execute_async_preprocesses_crlf_backslash_line_continuation():
+    registry = CommandRegistry()
+    registry.register(weather)
+
+    result = asyncio.run(registry.execute_async("weather Beijing \\\r\n -u fahrenheit"))
+
+    assert result.ok is True
+    assert result.value == "Beijing:fahrenheit:False"
+
+
 def test_detect_natural_language_hit():
     registry = CommandRegistry()
     registry.register(weather)
@@ -735,6 +824,81 @@ def test_chain_execute_async_supports_operators():
 
     results = asyncio.run(registry.chain_execute_async("weather Beijing ; weather Shanghai -u kelvin"))
     assert results == ["Beijing:celsius:False", "Shanghai:kelvin:False"]
+
+
+def test_chain_execute_respects_quoted_operators():
+    @command(name="say")
+    def say(text: Annotated[str, Option(positional=True)]) -> str:
+        return text
+
+    registry = CommandRegistry()
+    registry.register(say)
+
+    assert registry.chain_execute('say "hello | world"') == ["hello | world"]
+    assert registry.chain_execute('say "hello ; world" ; say done') == ["hello ; world", "done"]
+    assert registry.chain_execute('say "hello && world" && say ok') == ["hello && world", "ok"]
+    assert registry.chain_execute("""say 'hello || world' || say skipped""") == ["hello || world"]
+
+
+def test_chain_hit_respects_quoted_operators():
+    @command(name="say")
+    def say(text: Annotated[str, Option(positional=True)]) -> str:
+        return text
+
+    registry = CommandRegistry()
+    registry.register(say)
+
+    hits = registry.chain_hit('say "hello ; world" ; missing')
+
+    assert [hit.command for hit in hits] == ["say", None]
+
+
+def test_chain_execute_async_preprocesses_backslash_line_continuation():
+    @command(name="collect")
+    def collect(items: Annotated[list[str], Option(positional=True)]) -> list[str]:
+        return items
+
+    registry = CommandRegistry()
+    registry.register(collect)
+
+    results = asyncio.run(registry.chain_execute_async("collect hello \\\nworld"))
+
+    assert results == [["hello", "world"]]
+
+
+def test_parse_common_inputs_stays_sub_millisecond_average():
+    @command(name="say")
+    def say(text: Annotated[str, Option(positional=True)]) -> str:
+        return text
+
+    @command(name="collect")
+    def collect(items: Annotated[list[str], Option(positional=True)]) -> list[str]:
+        return items
+
+    registry = CommandRegistry()
+    registry.register(weather)
+    registry.register(say)
+    registry.register(collect)
+
+    commands = [
+        "weather Beijing -u fahrenheit",
+        'weather "New York" --unit fahrenheit',
+        "collect hello \\\nworld",
+        'say "hello && world"',
+    ]
+    for command_text in commands:
+        registry.parse(command_text)
+
+    iterations = 1_000
+    start = time.perf_counter()
+    for index in range(iterations):
+        parsed = registry.parse(commands[index % len(commands)])
+        assert parsed is not None
+        assert parsed.errors == []
+    elapsed = time.perf_counter() - start
+    avg_us = elapsed / iterations * 1_000_000
+
+    assert avg_us < 1_500
 
 
 def test_wrap_langchain_tool_creates_command_spec():

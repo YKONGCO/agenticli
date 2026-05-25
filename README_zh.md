@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -94,13 +94,13 @@ registry.parse_and_execute("calc add 10 20 30")
 | 能力 | 说明 |
 |------|------|
 | 🔌 **多种注册方式** | 装饰器、类继承、dataclass、Pydantic、schema 包装 |
-| ⚡ **CLI 解析** | 位置参数、`--option value`、`-o value`、`--opt=val`、flag |
+| ⚡ **CLI 解析** | 位置参数、带引号参数、`--option value`、`-o value`、`--opt=val`、flag |
 | 📖 **帮助系统** | 自动生成 usage、help 文本和 LLM prompt |
 | ✅ **参数校验** | 类型转换、`requires`/`excludes`、枚举校验 |
 | 💡 **智能建议** | 未知命令、未知选项、枚举值拼写建议 |
 | 🔄 **生命周期钩子** | `before_execute`、`after_execute`、`on_error` |
 | 🏃 **内部注入** | 回调/状态对 CLI 隐藏，但可在运行时注入 |
-| 🔗 **链式执行** | `cmd1 && cmd2 || cmd3 ; cmd4` |
+| 🔗 **链式执行** | 支持引号感知的 `cmd1 && cmd2 || cmd3 ; cmd4` |
 | ⏳ **异步执行** | 原生支持 `execute_async`、`parse_and_execute_async`、`chain_execute_async` |
 | 🔌 **外部工具导入** | 可将 LangChain / AutoGen / OpenAI 风格工具包装成 `CommandSpec` |
 
@@ -254,6 +254,31 @@ registry.register_spec(
 result = await registry.execute_async("calc add 1 2 3")
 value = await registry.parse_and_execute_async("calc add 1 2 3")
 items = await registry.chain_execute_async("cmd1 ; cmd2")
+```
+
+## 🧾 命令语法
+
+命令参数支持 shell 风格引号：
+
+```bash
+weather "New York" --unit fahrenheit
+say 'single quoted text'
+say "arg with \"nested\" quotes"
+```
+
+解析前会先处理反斜杠换行续行：
+
+```bash
+weather "New York" \
+  --unit fahrenheit
+```
+
+命令链支持 `;`、`&&` 和 `||`。引号内的操作符会作为参数内容保留，
+不会被当作链式分隔符：
+
+```bash
+say "hello ; world" ; say done
+say "hello && world" && say ok
 ```
 
 ## 📦 稳定 API

@@ -61,11 +61,12 @@ The `CommandRegistry` is the central component of agenticli. It manages command 
 Key responsibilities:
 - Register commands and command groups
 - Command hit detection and matching
-- Parse positional args, long args, short args, boolean flags
+- Parse positional args, quoted args, long args, short args, boolean flags
 - Auto-generate usage/help/LLM prompt
 - Argument validation and default value filling
 - Execute functions, class commands, and wrapped tools
 - Support native async execution APIs
+- Support backslash-newline continuation and quote-aware chain splitting
 - Unified error wrapping and suggestion prompting
 - Support internal injected parameters and execution lifecycle callbacks
 
@@ -183,6 +184,52 @@ from agenticli.tooling import (
     wrap_openai_tool_schema,
 )
 ```
+
+---
+
+## Command Syntax
+
+### Quoted Arguments
+
+Arguments are split with shell-style quoting:
+
+```bash
+weather "New York" --unit fahrenheit
+say 'single quoted text'
+say "arg with \"nested\" quotes"
+```
+
+Quoted spaces remain inside one argument.
+
+### Backslash Continuation
+
+A backslash immediately followed by LF or CRLF is normalized to a space before
+parsing:
+
+```bash
+weather "New York" \
+  --unit fahrenheit
+```
+
+This is parsed like:
+
+```bash
+weather "New York" --unit fahrenheit
+```
+
+### Chain Operators and Quotes
+
+`chain_execute()` and `chain_execute_async()` support `;`, `&&`, and `||`.
+The chain splitter respects quotes, so operators inside quoted arguments do
+not split the command:
+
+```bash
+registry.chain_execute('say "hello ; world" ; say done')
+registry.chain_execute('say "hello && world" && say ok')
+```
+
+The single pipe operator `|`, redirection, glob expansion, variable expansion,
+and command substitution are not shell-expanded by agenticli.
 
 ---
 
@@ -384,6 +431,9 @@ registry.chain_execute("cmd1 && cmd2")
 
 # OR: stop if any succeeds
 registry.chain_execute("cmd1 || cmd2")
+
+# Operators inside quotes are treated as argument text
+registry.chain_execute('cmd1 "literal && text" ; cmd2')
 ```
 
 ---
