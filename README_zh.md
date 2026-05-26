@@ -346,6 +346,24 @@ python -m example.demo --provider openai
 python -m example.demo --provider anthropic
 ```
 
+本地 Linux-like 命令示例（`pwd`、`cd`、`ls`、`cat`、`head`、`grep`、`wc`）见：
+
+```bash
+python -m example.linux_like_demo
+```
+
+各类使用方式的独立示例：
+
+```bash
+python -m example.decorator_demo
+python -m example.command_group_demo
+python -m example.class_command_demo
+python -m example.command_from_model_demo
+python -m example.command_from_method_demo
+python -m example.wrap_tool_demo
+python -m example.external_adapters_demo
+```
+
 ## 📚 文档
 
 | 语言 | 链接 |

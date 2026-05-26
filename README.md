@@ -335,6 +335,24 @@ python -m example.demo --provider openai
 python -m example.demo --provider anthropic
 ```
 
+For a local Linux-like command demo (`pwd`, `cd`, `ls`, `cat`, `head`, `grep`, `wc`):
+
+```bash
+python -m example.linux_like_demo
+```
+
+Usage pattern demos:
+
+```bash
+python -m example.decorator_demo
+python -m example.command_group_demo
+python -m example.class_command_demo
+python -m example.command_from_model_demo
+python -m example.command_from_method_demo
+python -m example.wrap_tool_demo
+python -m example.external_adapters_demo
+```
+
 ## 📚 Documentation
 
 | Language | Link |

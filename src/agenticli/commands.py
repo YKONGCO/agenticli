@@ -64,7 +64,89 @@ def command_from_model(
     hidden: bool = False,
     deprecated: str | None = None,
 ) -> CommandSpec:
-    """Build a command from a dataclass or Pydantic model plus a handler."""
+    """Expose a dataclass or Pydantic model plus a handler as a command.
+
+    This helper is useful when your tool input is already described by a typed
+    model and you want to keep that model as the single source of truth for the
+    command arguments. agenticli inspects the model fields to build CLI parsing,
+    validation, help text, and JSON Schema. After validation, the parsed values
+    are passed to ``handler`` as keyword arguments.
+
+    Supported models:
+        - ``@dataclass`` classes from the Python standard library.
+        - Pydantic ``BaseModel`` subclasses when Pydantic is installed.
+
+    Field behavior:
+        - Required model fields become required command arguments.
+        - Fields with defaults become optional command arguments.
+        - ``Annotated[..., Option(...)]`` can customize CLI metadata such as
+          short flags, positional arguments, value names, examples, visibility,
+          repeatability, and dependency constraints.
+        - Basic Python types, lists, tuples, dictionaries, booleans, and
+          ``Literal`` values are coerced and validated before the handler runs.
+
+    The ``handler`` may be sync or async. It should accept keyword arguments
+    matching the model field names. Its return value becomes the command result.
+
+    Args:
+        name: Command name used by ``CommandRegistry.execute()``, such as
+            ``"multiply"`` or ``"user create"``.
+        model: Dataclass or Pydantic model class used to define command input.
+        handler: Function or callable invoked as ``handler(**validated_args)``.
+        description: Help text and LLM context summary. If omitted, the handler
+            docstring is used.
+        aliases: Alternative command names that invoke the same handler.
+        hidden: Hide the command from command listings while keeping it callable.
+        deprecated: Optional deprecation message shown in help output.
+
+    Returns:
+        A ``CommandSpec`` that can be registered with
+        ``CommandRegistry.register_spec()``.
+
+    Raises:
+        TypeError: If ``model`` is not a dataclass and is not a Pydantic
+            ``BaseModel`` subclass.
+
+    Example:
+        >>> from dataclasses import dataclass
+        >>> from typing import Annotated
+        >>> from agenticli import CommandRegistry, Option, command_from_model
+        >>>
+        >>> @dataclass
+        ... class MultiplyInput:
+        ...     left: Annotated[float, Option(short="l")]
+        ...     right: Annotated[float, Option(short="r")]
+        ...     precision: Annotated[int, Option(short="p")] = 2
+        ...
+        >>> def multiply(left: float, right: float, precision: int = 2) -> dict:
+        ...     return {"result": round(left * right, precision)}
+        ...
+        >>> registry = CommandRegistry()
+        >>> registry.register_spec(
+        ...     command_from_model(
+        ...         "multiply",
+        ...         MultiplyInput,
+        ...         multiply,
+        ...         description="Multiply two numbers",
+        ...     )
+        ... )
+        >>> result = registry.execute("multiply -l 1.234 -r 10 -p 1")
+        >>> result.value
+        {'result': 12.3}
+
+    Positional example:
+        >>> @dataclass
+        ... class SumInput:
+        ...     values: Annotated[list[float], Option(positional=True)]
+        ...
+        >>> def sum_values(values: list[float]) -> dict:
+        ...     return {"result": sum(values)}
+        ...
+        >>> registry = CommandRegistry()
+        >>> registry.register_spec(command_from_model("sum", SumInput, sum_values))
+        >>> registry.execute("sum 1 2 3").value
+        {'result': 6.0}
+    """
     if not (is_dataclass(model) or (BaseModel and inspect.isclass(model) and issubclass(model, BaseModel))):
         raise TypeError("model must be a dataclass or Pydantic BaseModel")
 
@@ -103,7 +185,59 @@ def command_from_method(
     hidden: bool = False,
     deprecated: str | None = None,
 ) -> CommandSpec:
-    """Build a command from a single method on a class or instance."""
+    """Expose one method on a class or instance as an agenticli command.
+
+    This helper is useful when you already have a small service/tool object and
+    want to expose one of its methods without adding decorators to the class.
+    The method signature is inspected with the same rules as ``@command``:
+    parameters become CLI options or positional arguments, ``Annotated[..., Option(...)]``
+    adds CLI metadata, async methods are supported, and the method return value
+    becomes the command result.
+
+    If ``target`` is a class, agenticli creates one instance with ``target()``.
+    If ``target`` is already an instance, that exact instance is reused. Reusing
+    an instance is useful for stateful command sets, for example a shell-like
+    object where ``cd`` changes the current directory used by later commands.
+
+    Args:
+        name: Command name used by ``CommandRegistry.execute()``, such as
+            ``"ls"`` or ``"user create"``.
+        target: A class or instance containing the method to expose.
+        method_name: Name of the method to expose. Defaults to ``"run"``.
+        description: Help text and LLM context summary. If omitted, the method
+            docstring is used.
+        aliases: Alternative command names that invoke the same method.
+        hidden: Hide the command from command listings while keeping it callable.
+        deprecated: Optional deprecation message shown in help output.
+
+    Returns:
+        A ``CommandSpec`` that can be registered with
+        ``CommandRegistry.register_spec()``.
+
+    Raises:
+        AttributeError: If ``target`` does not have ``method_name``.
+        TypeError: If the named attribute exists but is not callable.
+
+    Example:
+        >>> from typing import Annotated
+        >>> from agenticli import CommandRegistry, Option, command_from_method
+        >>>
+        >>> class Files:
+        ...     def ls(
+        ...         self,
+        ...         path: Annotated[str, Option(positional=True)] = ".",
+        ...         all: Annotated[bool, Option(short="a")] = False,
+        ...     ) -> dict:
+        ...         return {"path": path, "all": all}
+        ...
+        >>> registry = CommandRegistry()
+        >>> registry.register_spec(command_from_method("ls", Files(), "ls"))
+        >>> result = registry.execute("ls -a example")
+        >>> result.ok
+        True
+        >>> result.value
+        {'path': 'example', 'all': True}
+    """
     if inspect.isclass(target):
         instance = target()
     else:
