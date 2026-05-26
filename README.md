@@ -278,18 +278,30 @@ say "hello && world" && say ok
 CommandRegistry
 CommandRegistry.register(target)
 CommandRegistry.register_spec(spec)
+CommandRegistry.unregister(name)
+CommandRegistry.get(name)
+CommandRegistry.has(name)
+CommandRegistry.parse(command_str)
 CommandRegistry.execute(command_str)
 CommandRegistry.execute_async(command_str)
 CommandRegistry.parse_and_execute(command_str)
 CommandRegistry.parse_and_execute_async(command_str)
 CommandRegistry.chain_execute(command_str)
 CommandRegistry.chain_execute_async(command_str)
+CommandRegistry.chain_hit(command_str)
+CommandRegistry.chain_has(command_str)
 CommandRegistry.render_help(command)
+CommandRegistry.detect(text)
+CommandRegistry.match_command(text)
+CommandRegistry.is_command(text)
 CommandRegistry.get_llm_prompt(detailed=False)
+CommandRegistry.commands
 
 # Decorators
 command(name=None, description="", aliases=None, hidden=False, deprecated=None)
 command_group(name, description)
+get_registered_commands()
+clear_commands()
 
 # Helpers
 CliCommand

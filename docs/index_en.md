@@ -265,8 +265,14 @@ registry = CommandRegistry(
 | `execute_async(command_str)` | Async execute and return ExecutionResult |
 | `chain_execute(command_str)` | Execute a chain of commands |
 | `chain_execute_async(command_str)` | Async execute a chain of commands |
+| `chain_hit(command_str)` | Match each command in a chain without executing |
+| `chain_has(command_str)` | Check whether all commands in a chain are registered |
 | `render_help(command)` | Get help text |
+| `detect(text)` | Detect a registered command mentioned in free-form text |
+| `match_command(text)` | Match text against registered command names |
+| `is_command(text)` | Check whether text looks like a registered command |
 | `get_llm_prompt(detailed)` | Generate LLM context string |
+| `commands` | List visible registered command names |
 
 #### CliCommand
 
@@ -362,16 +368,17 @@ def cmd(
 
 #### ExecTool
 
-Execute commands through a callback.
+Expose an `exec`-style schema tool backed by a callback. `ExecTool` does not
+execute a shell by itself; the callback decides what the command string means.
 
 ```python
-from agenticli import ExecTool, CommandRegistry
+from agenticli import ExecTool
 
-def execute_callback(command: str, **kwargs):
-    return subprocess.run(command, shell=True, timeout=kwargs.get("timeout", 60))
+async def execute_callback(command: str, **kwargs):
+    return {"command": command, "timeout": kwargs.get("timeout", 60)}
 
 exec_tool = ExecTool(callback=execute_callback)
-result = exec_tool.execute(command="ls -la")
+result = await exec_tool.execute(command="search docs", timeout=30)
 ```
 
 ---

@@ -263,8 +263,14 @@ registry = CommandRegistry(
 | `execute_async(command_str)` | 异步执行并返回 ExecutionResult |
 | `chain_execute(command_str)` | 执行命令链 |
 | `chain_execute_async(command_str)` | 异步执行命令链 |
+| `chain_hit(command_str)` | 匹配命令链中的每条命令但不执行 |
+| `chain_has(command_str)` | 检查命令链中的命令是否都已注册 |
 | `render_help(command)` | 获取帮助文本 |
+| `detect(text)` | 从自然语言文本中检测已注册命令 |
+| `match_command(text)` | 将文本与已注册命令名进行匹配 |
+| `is_command(text)` | 检查文本是否像一条已注册命令 |
 | `get_llm_prompt(detailed)` | 生成 LLM 上下文字符串 |
+| `commands` | 列出可见的已注册命令名 |
 
 #### CliCommand
 
@@ -360,16 +366,17 @@ def cmd(
 
 #### ExecTool
 
-通过回调执行命令。
+提供由回调驱动的 `exec` 风格 schema 工具。`ExecTool` 本身不会执行
+shell；回调函数决定命令字符串的具体含义。
 
 ```python
-from agenticli import ExecTool, CommandRegistry
+from agenticli import ExecTool
 
-def execute_callback(command: str, **kwargs):
-    return subprocess.run(command, shell=True, timeout=kwargs.get("timeout", 60))
+async def execute_callback(command: str, **kwargs):
+    return {"command": command, "timeout": kwargs.get("timeout", 60)}
 
 exec_tool = ExecTool(callback=execute_callback)
-result = exec_tool.execute(command="ls -la")
+result = await exec_tool.execute(command="search docs", timeout=30)
 ```
 
 ---

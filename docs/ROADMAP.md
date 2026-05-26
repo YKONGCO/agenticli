@@ -1,6 +1,6 @@
 # agenticli Roadmap
 
-> 📌 Last updated: 2026-05-25
+> 📌 Last updated: 2026-05-26
 
 ## Project Vision
 
@@ -74,26 +74,45 @@ say "hello && world" && say ok
 
 ## 📋 Planned Features
 
-### Parsing Enhancements
-- [ ] Glob pattern expansion for argument values 待定
+The roadmap prioritizes agenticli as an LLM tool semantic layer, not as a full
+shell emulator. Shell-like syntax is used only where it improves compactness,
+observability, and model reliability.
 
-### Shell Compatibility
-- [ ] Input/output redirection support (`>`, `<`)
-- [ ] Pipe operator (`|`) for command chaining
-- [ ] Background execution (`&`)
-- [ ] Command substitution (`$( )`, backticks)
+### P0: Documentation & Release Hygiene
+- [ ] Keep `pyproject.toml`, README badges, CHANGELOG, and roadmap versions in sync
+- [ ] Document the supported command grammar as a stable contract
+- [ ] Clearly document unsupported shell syntax and whether it is passed through or rejected
+- [ ] Replace placeholder repository links in CHANGELOG with the canonical project URL
 
-### Developer Experience
-- [ ] Interactive REPL mode
-- [ ] Shell completion scripts
-- [ ] Debug mode with verbose logging
-- [ ] Configuration file support (YAML/TOML)
+### P1: LLM Tool Semantics
+- [ ] Stable `CommandSpec` serialization for persistence, inspection, and cross-process transport
+- [ ] Export command specs to JSON Schema / OpenAI-style tool definitions where useful
+- [ ] Improve schema import coverage for common tool ecosystems
+- [ ] Add compact and detailed prompt rendering modes with predictable token budgets
+- [ ] Make structured error codes and suggestions part of the public compatibility contract
+- [ ] Add command capability discovery APIs for agents that need incremental help expansion
 
-### Advanced Features
-- [ ] Async iterator support for streaming results
-- [ ] Middleware/hook system for pre/post processing
-- [ ] Command history (up-arrow)
-- [ ] Variable expansion (`$VAR`, `${VAR}`)
+### P1: Parser Reliability
+- [ ] Add explicit tests for unsupported shell syntax: `|`, `>`, `<`, `&`, `$VAR`, `${VAR}`, `$()`, and backticks
+- [ ] Decide whether unsupported shell syntax should always be treated as literal arguments or rejected with structured errors
+- [ ] Harden quote, escape, and chain-splitting behavior around edge cases
+- [ ] Improve diagnostics for malformed quotes and incomplete command chains
+
+### P1: Execution & Observability
+- [ ] Add execution trace metadata for parse, validation, execution, callback, and error stages
+- [ ] Add first-class timeout and cancellation handling for async execution
+- [ ] Expand lifecycle callbacks into a clearer policy/audit hook surface
+- [ ] Support optional structured logging without forcing a logging framework dependency
+
+### P2: Streaming Results
+- [ ] Support commands returning async iterators for streaming tool results
+- [ ] Define sync and async streaming result wrappers
+- [ ] Document how streaming results should be consumed by agent runtimes
+
+### P3: Optional CLI Application Layer
+- [ ] Interactive REPL mode, if the project adds an official `agenticli` executable
+- [ ] Command history and shell completion, scoped to the optional executable
+- [ ] YAML/TOML configuration for loading local command registries
 
 ---
 
@@ -103,17 +122,18 @@ These are speculative and depend on user feedback:
 
 - **Plugin system**: Load commands from external packages
 - **GUI debugger**: Visual command inspection
-- **Multi-shell support**: PowerShell, Cmd, fish compatibility
-- **LLM-aware features**: Prompt optimization suggestions
+- **Provider adapters**: Convenience bridges for agent runtimes that want an `exec`-style tool
+- **LLM-aware features**: Prompt optimization suggestions and command repair hints
 
 ---
 
 ## 🐛 Known Limitations
 
-1. **No glob expansion**: `*.txt` passed literally, not expanded
-2. **Limited shell emulation**: quoting follows `shlex.split()`, not every shell edge case
-3. **Single-command output**: Cannot pipe output to next command input
-4. **No shell expansion**: variables, command substitution, and redirection are passed literally
+1. **Not a shell emulator**: agenticli intentionally does not implement full shell semantics.
+2. **No shell expansion**: glob patterns, variables, command substitution, redirection, and pipe syntax are not expanded by agenticli.
+3. **Limited command chaining**: only `;`, `&&`, and `||` are supported, and only as registry-level execution operators.
+4. **No output piping**: command output is returned as structured Python values, not streamed into another command's stdin.
+5. **Quoting is shlex-based**: argument splitting follows Python `shlex`, not every Bash, PowerShell, Cmd, fish, or zsh edge case.
 
 ---
 
@@ -121,7 +141,8 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.1.3**: Current stable release
+- **v0.1.4**: Current stable release
+- **v0.1.3**: Async execution and external tool wrapping
 - **v0.1.2**: Command groups and aliases
 - **v0.1.1**: Validation enhancements
 - **v0.1.0**: Initial release

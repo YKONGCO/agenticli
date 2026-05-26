@@ -26,7 +26,7 @@ Exports:
     ExecutionCallbacks: Lifecycle callbacks for command execution.
     ExecutionContext: Context passed to lifecycle callbacks.
     ExecutionResult: Structured execution result with ok/value/error.
-    ExecTool: Built-in command execution tool.
+    ExecTool: Built-in callback bridge for command strings.
     HitResult: Command matching/detection result.
     Injected: Marker for injected (internal) parameters.
     ParseResult: Parsed command result with arguments.

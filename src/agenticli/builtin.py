@@ -1,7 +1,7 @@
 """Builtin tools for agenticli.
 
 This module provides built-in command tools that ship with agenticli,
-including the ExecTool for executing shell commands through a callback.
+including the ExecTool callback bridge for command strings.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from typing import Any, Awaitable, Callable
 class ExecTool:
     """Minimal schema-based exec tool backed by a callback.
 
-    Provides a command execution tool that delegates to a user-provided
+    Provides a schema-based command tool that delegates to a user-provided
     callback function. The callback receives the command string and any
-    additional arguments.
+    additional arguments. ExecTool does not execute a shell by itself.
 
     Attributes:
         name: Command name, defaults to "exec".

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Synchronized README and docs with the current public API surface
+- Clarified `ExecTool` documentation as a callback bridge rather than a shell executor
+
+## [0.1.4] - 2026-05-25
+
+### Added
+- Backslash line continuation support for LF and CRLF command input
+- Quote-aware command chain splitting for `;`, `&&`, and `||`
+- Additional parser and chain execution tests for quoted operators and line continuations
+
+### Changed
+- Updated README and docs to describe the current command grammar and LLM tool semantic layer scope
+- Clarified that agenticli does not implement full shell expansion or shell emulation
+
 ## [0.1.3] - 2026-04-27
 
 ### Added
@@ -79,10 +94,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `on_error`
 - Internal parameter injection (`Injected`, `Callback`, `State`)
 - Chain execution with operators (`&&`, `||`, `;`)
-- Built-in `ExecTool` for shell command execution
+- Built-in `ExecTool` callback bridge for command strings
 
-[Unreleased]: https://github.com/your-repo/agenticli/compare/v0.1.3...HEAD
-[0.1.3]: https://github.com/your-repo/agenticli/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/your-repo/agenticli/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/your-repo/agenticli/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/your-repo/agenticli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/YKONGCO/agenticli/compare/v0.1.3...v0.1.4
+[0.1.3]: https://github.com/YKONGCO/agenticli/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/YKONGCO/agenticli/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/YKONGCO/agenticli/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/YKONGCO/agenticli/releases/tag/v0.1.0
