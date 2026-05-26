@@ -8,6 +8,7 @@
 - [核心概念](#核心概念)
 - [命令定义](#命令定义)
 - [API 参考](#api-参考)
+- [0.2.0 迁移指南](migration_0.2.md)
 
 ---
 
@@ -46,8 +47,9 @@ class Calc:
 registry = CommandRegistry()
 registry.register(Calc)
 
-print(registry.get_llm_prompt())
-print(registry.parse_and_execute("calc add 10 20 30"))
+print(registry.render_llm_context())
+result = registry.execute("calc add 10 20 30")
+print(result.value if result.ok else result.error.render())
 ```
 
 ---
@@ -175,10 +177,10 @@ registry.register_spec(wrap_tool(MyTool()))
 ### 导入外部框架工具
 
 如果你已经有 LangChain、AutoGen 或 OpenAI 风格的工具定义，可以通过
-`agenticli.tooling` 里的包装函数把它们转成 `CommandSpec`：
+`agenticli.adapters` 里的包装函数把它们转成 `CommandSpec`：
 
 ```python
-from agenticli.tooling import (
+from agenticli.adapters import (
     wrap_autogen_tool,
     wrap_langchain_tool,
     wrap_openai_tool_schema,
@@ -218,16 +220,41 @@ weather "New York" --unit fahrenheit
 
 ### 命令链操作符与引号
 
-`chain_execute()` 和 `chain_execute_async()` 支持 `;`、`&&` 和 `||`。
+`execute(..., chain=True)` 和 `execute_async(..., chain=True)` 支持 `;`、`&&` 和 `||`。
 命令链拆分会尊重引号，因此引号内的操作符不会拆分命令：
 
 ```bash
-registry.chain_execute('say "hello ; world" ; say done')
-registry.chain_execute('say "hello && world" && say ok')
+registry.execute('say "hello ; world" ; say done', chain=True)
+registry.execute('say "hello && world" && say ok', chain=True)
 ```
 
 单个管道符 `|`、重定向、glob 展开、变量展开和命令替换不会由
 agenticli 进行 shell 展开。
+
+---
+
+## 错误处理
+
+不正确的命令输入会返回结构化错误，而不是抛出解析异常：
+
+```python
+result = registry.execute('weather "Beijing')
+assert result.ok is False
+assert result.error.code == "parse_error"
+
+result = registry.execute("/")
+assert result.ok is False
+assert result.error.code == "unknown_command"
+
+items = registry.execute("missing && weather Beijing", chain=True)
+# ["Error: Unknown command"]
+```
+
+对于命令组，未知子命令会按未知命令处理：
+
+```python
+registry.execute("calc missing 1 2")
+```
 
 ---
 
@@ -256,20 +283,12 @@ registry = CommandRegistry(
 | `unregister(name)` | 移除命令 |
 | `get(name)` | 按名称获取 CommandSpec |
 | `has(name)` | 检查命令是否存在 |
-| `parse(command_str)` | 解析但不执行 |
-| `parse_and_execute(command_str)` | 解析并执行，返回值或错误 |
-| `parse_and_execute_async(command_str)` | 异步解析并执行 |
-| `execute(command_str)` | 执行并返回 ExecutionResult |
-| `execute_async(command_str)` | 异步执行并返回 ExecutionResult |
-| `chain_execute(command_str)` | 执行命令链 |
-| `chain_execute_async(command_str)` | 异步执行命令链 |
-| `chain_hit(command_str)` | 匹配命令链中的每条命令但不执行 |
-| `chain_has(command_str)` | 检查命令链中的命令是否都已注册 |
-| `render_help(command)` | 获取帮助文本 |
-| `detect(text)` | 从自然语言文本中检测已注册命令 |
-| `match_command(text)` | 将文本与已注册命令名进行匹配 |
-| `is_command(text)` | 检查文本是否像一条已注册命令 |
-| `get_llm_prompt(detailed)` | 生成 LLM 上下文字符串 |
+| `parse(command_str, chain=False)` | 解析但不执行；`chain=True` 时解析命令链 |
+| `execute(command_str, chain=False)` | 执行并返回 `ExecutionResult`；`chain=True` 时返回值/错误列表 |
+| `execute_async(command_str, chain=False)` | 异步执行，链式行为同上 |
+| `match(text, chain=False, mode="command")` | 匹配命令文本、命令链，或用 `mode="natural"` 匹配自然语言 |
+| `help(command=None)` | 获取帮助文本 |
+| `render_llm_context(detailed=False)` | 生成 LLM 命令上下文字符串 |
 | `commands` | 列出可见的已注册命令名 |
 
 #### CliCommand
@@ -429,16 +448,16 @@ registry = CommandRegistry(
 
 ```python
 # 顺序：执行所有
-registry.chain_execute("cmd1 ; cmd2")
+registry.execute("cmd1 ; cmd2", chain=True)
 
 # AND：任何一个失败则停止
-registry.chain_execute("cmd1 && cmd2")
+registry.execute("cmd1 && cmd2", chain=True)
 
 # OR：任何一个成功则停止
-registry.chain_execute("cmd1 || cmd2")
+registry.execute("cmd1 || cmd2", chain=True)
 
 # 引号内的操作符会作为参数文本处理
-registry.chain_execute('cmd1 "literal && text" ; cmd2')
+registry.execute('cmd1 "literal && text" ; cmd2', chain=True)
 ```
 
 ---

@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from agenticli import CommandRegistry, Option, command
-from agenticli.parser import CommandParser
+from agenticli.parser import CommandLineParser, CommandParser
 from agenticli.types import ArgSpec, CommandSpec
 
 
@@ -249,12 +249,12 @@ def run(args: argparse.Namespace) -> None:
     bench_sync(
         "chain_split_quoted_operator",
         args.chain_iterations,
-        lambda: CommandRegistry._split_chain_tokens('echo "hello && world" ; echo done'),
+        lambda: CommandLineParser.split_chain_tokens('echo "hello && world" ; echo done'),
     )
     bench_sync(
-        "chain_hit_quoted_operator",
+        "chain_match_quoted_operator",
         args.chain_iterations,
-        lambda: registry.chain_hit('echo "hello ; world" ; echo done'),
+        lambda: registry.match('echo "hello ; world" ; echo done', chain=True),
     )
     bench_sync("sync_execute", args.sync_iterations, lambda: registry.execute("add 1 2 --verbose"))
 

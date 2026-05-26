@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import difflib
 import inspect
-import re
 import shlex
 from typing import Any
 
-from agenticli.parser import CommandParser
-from agenticli.tooling import CliCommand, run_sync, wrap_tool
+from agenticli.factory import CommandFactory
+from agenticli.matcher import CommandMatcher
+from agenticli.parser import CommandLineParser, CommandParser
+from agenticli.runtime import run_sync
 from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
 
 
@@ -55,6 +56,8 @@ class CommandRegistry:
         self.strict = strict
         self.allow_prefix_match = allow_prefix_match
         self.callbacks = callbacks or ExecutionCallbacks()
+        self._line_parser = CommandLineParser()
+        self._matcher = CommandMatcher(self._commands, self._resolve_command, self._ensure_help_command)
 
     def register(self, target: Any) -> None:
         """Register a decorated function, command class/instance, or schema-based tool.
@@ -72,23 +75,7 @@ class CommandRegistry:
             self._register_command_group(target)
             return
 
-        if isinstance(target, CliCommand):
-            self.register_spec(target.to_command_spec())
-            return
-
-        if inspect.isclass(target) and issubclass(target, CliCommand):
-            self.register_spec(target().to_command_spec())
-            return
-
-        if hasattr(target, "__command_spec__"):
-            self.register_spec(target.__command_spec__)
-            return
-
-        if hasattr(target, "execute") and hasattr(target, "parameters"):
-            self.register_spec(wrap_tool(target))
-            return
-
-        raise TypeError(f"Unsupported command target: {target!r}")
+        self.register_spec(CommandFactory.from_target(target))
 
     def _register_command_group(self, cls: type) -> None:
         """Register a command group class with its subcommands.
@@ -214,7 +201,7 @@ class CommandRegistry:
             return
 
         async def help_handler(command: str | None = None) -> str:
-            return self.render_help(command)
+            return self.help(command)
 
         help_spec = CommandSpec(
             name="--help",
@@ -228,7 +215,7 @@ class CommandRegistry:
         self._commands["--help"] = help_spec
         self._help_added = True
 
-    def parse(self, command_str: str) -> ParseResult | None:
+    def parse(self, command_str: str, *, chain: bool = False) -> ParseResult | list[ParseResult | None] | None:
         """Parse a command string without executing.
 
         Args:
@@ -237,9 +224,16 @@ class CommandRegistry:
         Returns:
             ParseResult if command found, None if not recognized.
         """
+        if chain:
+            segments = self._line_parser.split_chain(self._line_parser.preprocess(command_str))
+            return [self.parse(segment.command) for segment in segments]
+
         self._ensure_help_command()
-        command_str = self._preprocess_command_input(command_str)
-        parts = shlex.split(command_str.strip())
+        command_str = self._line_parser.parse(command_str)  # type: ignore[assignment]
+        try:
+            parts = shlex.split(command_str.strip())
+        except ValueError as exc:
+            return ParseResult(command="", args={}, raw=command_str, errors=[str(exc)])
         if not parts:
             return None
         help_target = self._extract_help_target(parts)
@@ -249,199 +243,22 @@ class CommandRegistry:
         if not spec:
             return None
         parser = CommandParser(spec.args)
-        return parser.parse_tokens(self._parser_parts(command_name, parts), raw=command_str)
+        return parser.parse_tokens(self._line_parser.parser_parts(command_name, parts), raw=command_str)
 
-    def parse_and_execute(self, command_str: str) -> Any:
-        """Parse and execute a command, returning value or error message.
-
-        Convenience method combining execute() with result extraction.
+    def match(self, text: str, *, chain: bool = False, mode: str = "command") -> HitResult | list[HitResult]:
+        """Match text against registered commands.
 
         Args:
-            command_str: Command string to execute.
+            text: Text to match.
+            chain: If True, split text as a command chain before matching.
+            mode: "command" for CLI command matching, "natural" for mention detection.
 
         Returns:
-            Command return value if successful, error string if failed.
+            HitResult for single input, or a list of HitResult for chain input.
         """
-        result = self.execute(command_str)
-        if result.ok:
-            return result.value
-        return result.error.render() if result.error else "Error: Unknown error"
+        return self._matcher.match(text, chain=chain, mode=mode)
 
-    async def parse_and_execute_async(self, command_str: str) -> Any:
-        """Asynchronously parse and execute a command.
-
-        Args:
-            command_str: Command string to execute.
-
-        Returns:
-            Command return value if successful, error string if failed.
-        """
-        result = await self.execute_async(command_str)
-        if result.ok:
-            return result.value
-        return result.error.render() if result.error else "Error: Unknown error"
-
-    def chain_execute(self, command_str: str) -> list[Any]:
-        """Execute multiple commands separated by Unix-style operators.
-
-        Supports:
-            && - AND: stop if any command fails
-            || - OR: stop if any command succeeds
-            ;  - sequential: execute all commands
-
-        Args:
-            command_str: Command string with commands and operators.
-
-        Returns:
-            List of results from each executed command.
-        """
-        command_str = self._preprocess_command_input(command_str)
-        tokens = self._split_chain_tokens(command_str)
-
-        if not tokens:
-            return []
-
-        results = []
-        pending_cmd = tokens[0]
-        i = 1
-
-        while i < len(tokens):
-            token = tokens[i]
-
-            if token in ('&&', '||', ';'):
-                result = self.parse_and_execute(pending_cmd)
-                results.append(result)
-
-                is_error = isinstance(result, str) and result.startswith('Error:')
-                if token == '&&' and is_error:
-                    return results
-                if token == '||' and not is_error:
-                    return results
-
-                pending_cmd = ''
-                i += 1
-            else:
-                if pending_cmd:
-                    pending_cmd += ' ' + token
-                else:
-                    pending_cmd = token
-                i += 1
-
-        if pending_cmd:
-            result = self.parse_and_execute(pending_cmd)
-            results.append(result)
-
-        return results
-
-    async def chain_execute_async(self, command_str: str) -> list[Any]:
-        """Asynchronously execute multiple commands separated by Unix-style operators.
-
-        Supports:
-            && - AND: stop if any command fails
-            || - OR: stop if any command succeeds
-            ;  - sequential: execute all commands
-
-        Args:
-            command_str: Command string with commands and operators.
-
-        Returns:
-            List of results from each executed command.
-        """
-        command_str = self._preprocess_command_input(command_str)
-        tokens = self._split_chain_tokens(command_str)
-
-        if not tokens:
-            return []
-
-        results = []
-        pending_cmd = tokens[0]
-        i = 1
-
-        while i < len(tokens):
-            token = tokens[i]
-
-            if token in ("&&", "||", ";"):
-                result = await self.parse_and_execute_async(pending_cmd)
-                results.append(result)
-
-                is_error = isinstance(result, str) and result.startswith("Error:")
-                if token == "&&" and is_error:
-                    return results
-                if token == "||" and not is_error:
-                    return results
-
-                pending_cmd = ""
-                i += 1
-            else:
-                if pending_cmd:
-                    pending_cmd += " " + token
-                else:
-                    pending_cmd = token
-                i += 1
-
-        if pending_cmd:
-            result = await self.parse_and_execute_async(pending_cmd)
-            results.append(result)
-
-        return results
-
-    def chain_hit(self, command_str: str) -> list[HitResult]:
-        """Check which commands in a chain are registered.
-
-        Args:
-            command_str: Command string with commands and operators (&&, ||, ;).
-
-        Returns:
-            List of HitResult for each command in the chain.
-        """
-        command_str = self._preprocess_command_input(command_str)
-        tokens = self._split_chain_tokens(command_str)
-
-        if not tokens:
-            return []
-
-        results: list[HitResult] = []
-        pending_cmd = tokens[0]
-        i = 1
-
-        while i < len(tokens):
-            token = tokens[i]
-
-            if token in ('&&', '||', ';'):
-                hit = self.match_command(pending_cmd)
-                results.append(hit)
-
-                if not hit.command and token in ('&&', '||'):
-                    return results
-
-                pending_cmd = ''
-                i += 1
-            else:
-                if pending_cmd:
-                    pending_cmd += ' ' + token
-                else:
-                    pending_cmd = token
-                i += 1
-
-        if pending_cmd:
-            hit = self.match_command(pending_cmd)
-            results.append(hit)
-
-        return results
-
-    def chain_has(self, command_str: str) -> bool:
-        """Check if all commands in a chain are registered.
-
-        Args:
-            command_str: Command string with commands and operators (&&, ||, ;).
-
-        Returns:
-            True if all commands are registered, False otherwise.
-        """
-        hits = self.chain_hit(command_str)
-        return all(hit.command for hit in hits)
-
-    def execute(self, command_str: str) -> ExecutionResult:
+    def execute(self, command_str: str, *, chain: bool = False) -> ExecutionResult | list[Any]:
         """Parse and execute a command string.
 
         Args:
@@ -450,9 +267,9 @@ class CommandRegistry:
         Returns:
             ExecutionResult with ok status, value or error.
         """
-        return run_sync(self.execute_async(command_str))
+        return run_sync(self.execute_async(command_str, chain=chain))
 
-    async def execute_async(self, command_str: str) -> ExecutionResult:
+    async def execute_async(self, command_str: str, *, chain: bool = False) -> ExecutionResult | list[Any]:
         """Asynchronously parse and execute a command string.
 
         Args:
@@ -461,21 +278,29 @@ class CommandRegistry:
         Returns:
             ExecutionResult with ok status, value or error.
         """
+        if chain:
+            return await self._execute_chain_async(command_str)
+
         self._ensure_help_command()
-        command_str = self._preprocess_command_input(command_str)
+        command_str = self._line_parser.parse(command_str)  # type: ignore[assignment]
         stripped = command_str.strip()
         if not stripped:
             error = CommandError(code="empty_command", message="Empty command")
             await self._run_error_callback_async(ExecutionContext(command="", raw=command_str, error=error))
             return ExecutionResult(ok=False, error=error)
-        parts = shlex.split(stripped)
+        try:
+            parts = shlex.split(stripped)
+        except ValueError as exc:
+            error = CommandError(code="parse_error", message=str(exc), subject=command_str)
+            await self._run_error_callback_async(ExecutionContext(command="", raw=command_str, error=error))
+            return ExecutionResult(ok=False, command="", error=error)
 
         if parts[0].startswith('/'):
             parts[0] = parts[0][1:]
 
         help_target = self._extract_help_target(parts)
         if help_target is not False:
-            return ExecutionResult(ok=True, command="--help", value=self.render_help(help_target))
+            return ExecutionResult(ok=True, command="--help", value=self.help(help_target))
         command_name, spec = self._resolve_command(parts)
         if not spec:
             suggestion = self._suggest_command(parts[0])
@@ -502,12 +327,24 @@ class CommandRegistry:
 
         if command_name == "--help":
             command = parts[1] if len(parts) > 1 else None
-            return ExecutionResult(ok=True, command="--help", value=self.render_help(command))
+            return ExecutionResult(ok=True, command="--help", value=self.help(command))
         if spec.source == "group":
-            return ExecutionResult(ok=True, command=command_name, value=self.render_help(command_name))
+            if len(parts) > 1:
+                subject = f"{parts[0]} {parts[1]}"
+                suggestion = self._suggest_group_subcommand(parts[0], parts[1])
+                error = CommandError(
+                    code="unknown_command",
+                    message="Unknown command",
+                    hint=f"Use '{parts[0]} --help' to inspect available subcommands.",
+                    suggestion=suggestion,
+                    subject=subject,
+                )
+                await self._run_error_callback_async(ExecutionContext(command=subject, raw=command_str, error=error))
+                return ExecutionResult(ok=False, command=subject, error=error)
+            return ExecutionResult(ok=True, command=command_name, value=self.help(command_name))
 
         parser = CommandParser(spec.args)
-        parsed = parser.parse_tokens(self._parser_parts(command_name, parts), raw=command_str)
+        parsed = parser.parse_tokens(self._line_parser.parser_parts(command_name, parts), raw=command_str)
         if self.strict and parsed.errors:
             error = self._build_parse_error(spec, parsed.errors)
             await self._run_error_callback_async(
@@ -522,6 +359,25 @@ class CommandRegistry:
             return ExecutionResult(ok=False, command=command_name, error=value)
         return ExecutionResult(ok=True, command=command_name, value=value)
 
+    async def _execute_chain_async(self, command_str: str) -> list[Any]:
+        """Execute a command chain and return values or rendered errors."""
+        segments = self._line_parser.split_chain(self._line_parser.preprocess(command_str))
+        if not segments:
+            return []
+
+        results: list[Any] = []
+        for segment in segments:
+            result = await self.execute_async(segment.command)
+            value = result.value if result.ok else result.error.render() if result.error else "Error: Unknown error"
+            results.append(value)
+
+            if segment.operator_after == "&&" and not result.ok:
+                return results
+            if segment.operator_after == "||" and result.ok:
+                return results
+
+        return results
+
     @staticmethod
     def _parser_input(command_name: str, parts: list[str]) -> str:
         """Prepare input string for CommandParser.
@@ -533,114 +389,27 @@ class CommandRegistry:
         Returns:
             String suitable for CommandParser.parse().
         """
-        return shlex.join(CommandRegistry._parser_parts(command_name, parts))
+        return shlex.join(CommandLineParser.parser_parts(command_name, parts))
 
     @staticmethod
     def _parser_parts(command_name: str, parts: list[str]) -> list[str]:
         """Prepare tokenized input for CommandParser."""
-        command_parts = command_name.split()
-        consumed = len(command_parts)
-        return [command_parts[-1], *parts[consumed:]]
+        return CommandLineParser.parser_parts(command_name, parts)
 
     @staticmethod
     def _preprocess_command_input(command_str: str) -> str:
         """Apply command-level preprocessing before parsing or chain splitting."""
-        return CommandRegistry._preprocess_backslash(command_str)
+        return CommandLineParser.preprocess(command_str)
 
     @staticmethod
     def _preprocess_backslash(command_str: str) -> str:
         """Handle backslash line continuations."""
-        if "\\\n" not in command_str and "\\\r" not in command_str:
-            return command_str
-
-        result: list[str] = []
-        i = 0
-
-        while i < len(command_str):
-            ch = command_str[i]
-
-            if ch == "\\" and i + 1 < len(command_str):
-                next_ch = command_str[i + 1]
-
-                if next_ch == "\n":
-                    result.append(" ")
-                    i += 2
-                    continue
-
-                if next_ch == "\r":
-                    result.append(" ")
-                    i += 2
-                    if i < len(command_str) and command_str[i] == "\n":
-                        i += 1
-                    continue
-
-            result.append(ch)
-            i += 1
-
-        return "".join(result)
+        return CommandLineParser.preprocess_backslash(command_str)
 
     @staticmethod
     def _split_chain_tokens(command_str: str) -> list[str]:
         """Split command chains on operators while respecting shell-style quotes."""
-        tokens: list[str] = []
-        current: list[str] = []
-        quote: str | None = None
-        escaped = False
-        i = 0
-
-        while i < len(command_str):
-            ch = command_str[i]
-
-            if escaped:
-                current.append(ch)
-                escaped = False
-                i += 1
-                continue
-
-            if ch == "\\":
-                current.append(ch)
-                escaped = True
-                i += 1
-                continue
-
-            if quote:
-                current.append(ch)
-                if ch == quote:
-                    quote = None
-                i += 1
-                continue
-
-            if ch in {"'", '"'}:
-                current.append(ch)
-                quote = ch
-                i += 1
-                continue
-
-            if command_str.startswith("&&", i) or command_str.startswith("||", i):
-                command = "".join(current).strip()
-                if command:
-                    tokens.append(command)
-                tokens.append(command_str[i : i + 2])
-                current = []
-                i += 2
-                continue
-
-            if ch == ";":
-                command = "".join(current).strip()
-                if command:
-                    tokens.append(command)
-                tokens.append(";")
-                current = []
-                i += 1
-                continue
-
-            current.append(ch)
-            i += 1
-
-        command = "".join(current).strip()
-        if command:
-            tokens.append(command)
-        return tokens
+        return CommandLineParser.split_chain_tokens(command_str)
 
     def _resolve_command(self, parts: list[str]) -> tuple[str, CommandSpec | None]:
         """Resolve command name from parts.
@@ -651,7 +420,7 @@ class CommandRegistry:
         Returns:
             Tuple of (command_name, CommandSpec) or (name, None).
         """
-        if not parts:
+        if not parts or not parts[0]:
             return "", None
         if parts[0] in {"--help", "-h"}:
             return "--help", self._commands.get("--help")
@@ -663,6 +432,8 @@ class CommandRegistry:
             return parts[0], self._commands[parts[0]]
         if self.allow_prefix_match:
             token = parts[0]
+            if not token:
+                return parts[0], None
             token_initial = token[0]
             for name, spec in self._commands.items():
                 if not name or name[0] != token_initial:
@@ -760,6 +531,17 @@ class CommandRegistry:
         ]
         matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.5)
         return matches[0] if matches else None
+
+    def _suggest_group_subcommand(self, group_name: str, token: str) -> str | None:
+        """Suggest a similar subcommand within a command group."""
+        prefix = f"{group_name} "
+        candidates = [
+            name[len(prefix):]
+            for name, spec in self._commands.items()
+            if name.startswith(prefix) and spec.parent == group_name and not spec.hidden
+        ]
+        matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.5)
+        return f"{group_name} {matches[0]}" if matches else None
 
     def _format_parse_error_hint(self, spec: CommandSpec, errors: list[str]) -> str:
         """Format hint for parse errors.
@@ -919,7 +701,7 @@ class CommandRegistry:
             return await result
         return result
 
-    def render_help(self, command: str | None = None) -> str:
+    def help(self, command: str | None = None) -> str:
         """Render help text for a command or list all commands.
 
         Args:
@@ -991,90 +773,8 @@ class CommandRegistry:
             lines.extend(["", f"Use {spec.name} <subcommand> --help for detailed help."])
         return "\n".join(lines)
 
-    def detect(self, text: str) -> HitResult:
-        """Detect if text mentions a registered command.
-
-        Scans text for command names and extracts potential arguments.
-
-        Args:
-            text: Text to scan.
-
-        Returns:
-            HitResult with detected command and suggested args.
-        """
-        self._ensure_help_command()
-        text_lower = text.lower()
-        for name, spec in self._commands.items():
-            if name.startswith("--"):
-                continue
-            if name in text_lower:
-                suggested_args = {}
-                for arg in spec.args:
-                    patterns = [
-                        rf"{arg.name}\s+is\s+([^\s]+)",
-                        rf"{arg.name}:\s*([^\s]+)",
-                        rf"for\s+([^\s]+)",
-                    ]
-                    for pattern in patterns:
-                        match = re.search(pattern, text_lower)
-                        if match:
-                            suggested_args[arg.name] = match.group(1)
-                            break
-                return HitResult(command=name, confidence=0.9, suggested_args=suggested_args or None)
-        return HitResult(command=None, confidence=0.0)
-
-    def match_command(self, text: str) -> HitResult:
-        """Match text against registered commands.
-
-        Args:
-            text: Text to match.
-
-        Returns:
-            HitResult with match details.
-        """
-        self._ensure_help_command()
-        text = text.strip()
-        if not text:
-            return HitResult(command=None, confidence=0.0)
-
-        try:
-            parts = shlex.split(text)
-        except ValueError:
-            parts = text.split()
-
-        command_name, spec = self._resolve_command(parts)
-        if spec:
-            args_str = text[len(command_name):].strip() or None
-            match_type = "exact" if parts and parts[0] == command_name.split()[0] else "prefix"
-            return HitResult(command=command_name, confidence=1.0 if match_type == "exact" else 0.8, args_str=args_str, match_type=match_type)
-
-        if text.startswith("/"):
-            candidate = text[1:].split()[0]
-            for name in self._commands:
-                if name.startswith(candidate):
-                    return HitResult(command=name, confidence=0.7, match_type="slash")
-        return HitResult(command=None, confidence=0.0)
-
-    def is_command(self, text: str) -> bool:
-        """Check if text looks like a registered command.
-
-        Args:
-            text: Text to check.
-
-        Returns:
-            True if text matches a command with confidence > 0.
-        """
-        return self.match_command(text).confidence > 0
-
-    def get_llm_prompt(self, detailed: bool = False) -> str:
-        """Generate prompt text for LLM context injection.
-
-        Args:
-            detailed: If True, include full usage lines.
-
-        Returns:
-            Formatted string describing available commands.
-        """
+    def render_llm_context(self, detailed: bool = False) -> str:
+        """Render available commands as LLM-readable context text."""
         self._ensure_help_command()
         if not self._commands:
             return "No commands registered."

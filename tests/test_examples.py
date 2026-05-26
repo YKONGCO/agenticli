@@ -4,6 +4,12 @@ from example import demo
 from agenticli import ExecTool
 
 
+def execute_value(registry, command_text: str):
+    result = registry.execute(command_text)
+    assert not isinstance(result, list)
+    return result.value if result.ok else result.error.render()
+
+
 class _OpenAIFunction:
     def __init__(self, name: str, arguments: str):
         self.name = name
@@ -38,18 +44,18 @@ class _AnthropicMessage:
 def test_demo_registry_supports_complex_calc_commands():
     registry = demo.build_registry()
 
-    assert registry.parse_and_execute("calc add 10 20 30 40") == {
+    assert execute_value(registry, "calc add 10 20 30 40") == {
         "operation": "add",
         "values": [10.0, 20.0, 30.0, 40.0],
         "result": 100.0,
     }
-    assert registry.parse_and_execute("calc mean 10 20 30 -p 3") == {
+    assert execute_value(registry, "calc mean 10 20 30 -p 3") == {
         "operation": "mean",
         "values": [10.0, 20.0, 30.0],
         "precision": 3,
         "result": 20.0,
     }
-    assert registry.parse_and_execute('calc dot -l "[1,2,3]" -r "[4,5,6]"') == {
+    assert execute_value(registry, 'calc dot -l "[1,2,3]" -r "[4,5,6]"') == {
         "operation": "dot",
         "left": [1.0, 2.0, 3.0],
         "right": [4.0, 5.0, 6.0],
@@ -59,7 +65,7 @@ def test_demo_registry_supports_complex_calc_commands():
 
 def test_demo_openai_helpers():
     registry = demo.build_registry()
-    exec_tool = ExecTool(callback=registry.parse_and_execute)
+    exec_tool = ExecTool(callback=lambda command, **kwargs: execute_value(registry, command))
 
     tools = demo.build_openai_tools(exec_tool)
     functions = demo.build_openai_functions(exec_tool)
@@ -103,7 +109,7 @@ def test_demo_openai_helpers():
 
 def test_demo_anthropic_helpers():
     registry = demo.build_registry(with_lifecycle_logs=True)
-    exec_tool = ExecTool(callback=registry.parse_and_execute)
+    exec_tool = ExecTool(callback=lambda command, **kwargs: execute_value(registry, command))
 
     tools = demo.build_anthropic_tools(exec_tool)
     assert tools[0]["name"] == "exec"
@@ -129,3 +135,4 @@ def test_demo_parse_args_selects_provider():
 
     assert openai_args.provider == "openai"
     assert anthropic_args.provider == "anthropic"
+

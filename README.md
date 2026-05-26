@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -52,13 +52,13 @@ class Calc:
 registry = CommandRegistry()
 registry.register(Calc)
 
-# LLM sees this minimal prompt:
-print(registry.get_llm_prompt())
+# LLM sees this minimal command context:
+print(registry.render_llm_context())
 # -> You can use the following CLI commands:
 #     calc: Calculator commands
 
-# Execute:
-registry.parse_and_execute("calc add 10 20 30")
+result = registry.execute("calc add 10 20 30")
+print(result.value if result.ok else result.error.render())
 # -> {"result": 60.0}
 ```
 
@@ -100,7 +100,7 @@ registry.parse_and_execute("calc add 10 20 30")
 | 🔄 **Lifecycle Hooks** | `before_execute`, `after_execute`, `on_error` |
 | 🏃 **Internal Injection** | Hide callbacks/state from CLI, inject at runtime |
 | 🔗 **Chain Execution** | Quote-aware `cmd1 && cmd2 || cmd3 ; cmd4` |
-| ⏳ **Async Execution** | Native `execute_async`, `parse_and_execute_async`, `chain_execute_async` |
+| ⏳ **Async Execution** | Native `execute_async(..., chain=False)` |
 | 🔌 **Tool Import** | Convert LangChain / AutoGen / OpenAI-style tools into `CommandSpec` |
 
 ## 📝 Registration Patterns
@@ -173,7 +173,11 @@ Expose only one `exec` tool to the LLM:
 ```python
 from agenticli import ExecTool
 
-exec_tool = ExecTool(callback=registry.parse_and_execute)
+def run_command(command: str, **kwargs):
+    result = registry.execute(command)
+    return result.value if result.ok else result.error.render()
+
+exec_tool = ExecTool(callback=run_command)
 # Tool schema: {name: "exec", params: {command: string, timeout?: int}}
 ```
 
@@ -208,11 +212,11 @@ def process(
 ## 🔌 Import External Tools
 
 You can wrap existing framework tools into `agenticli` commands through
-functions in `agenticli.tooling`:
+functions in `agenticli.adapters`:
 
 ```python
 from agenticli import CommandRegistry
-from agenticli.tooling import (
+from agenticli.adapters import (
     wrap_autogen_tool,
     wrap_langchain_tool,
     wrap_openai_tool_schema,
@@ -242,8 +246,7 @@ registry.register_spec(
 
 ```python
 result = await registry.execute_async("calc add 1 2 3")
-value = await registry.parse_and_execute_async("calc add 1 2 3")
-items = await registry.chain_execute_async("cmd1 ; cmd2")
+items = await registry.execute_async("cmd1 ; cmd2", chain=True)
 ```
 
 ## 🧾 Command Syntax
@@ -271,6 +274,17 @@ say "hello ; world" ; say done
 say "hello && world" && say ok
 ```
 
+Invalid input returns structured errors:
+
+```python
+result = registry.execute('weather "Beijing')
+assert result.ok is False
+assert result.error.code == "parse_error"
+
+registry.execute("missing && weather Beijing", chain=True)
+# ["Error: Unknown command"]
+```
+
 ## 📦 Stable API
 
 ```python
@@ -281,20 +295,12 @@ CommandRegistry.register_spec(spec)
 CommandRegistry.unregister(name)
 CommandRegistry.get(name)
 CommandRegistry.has(name)
-CommandRegistry.parse(command_str)
-CommandRegistry.execute(command_str)
-CommandRegistry.execute_async(command_str)
-CommandRegistry.parse_and_execute(command_str)
-CommandRegistry.parse_and_execute_async(command_str)
-CommandRegistry.chain_execute(command_str)
-CommandRegistry.chain_execute_async(command_str)
-CommandRegistry.chain_hit(command_str)
-CommandRegistry.chain_has(command_str)
-CommandRegistry.render_help(command)
-CommandRegistry.detect(text)
-CommandRegistry.match_command(text)
-CommandRegistry.is_command(text)
-CommandRegistry.get_llm_prompt(detailed=False)
+CommandRegistry.parse(command_str, chain=False)
+CommandRegistry.execute(command_str, chain=False)
+CommandRegistry.execute_async(command_str, chain=False)
+CommandRegistry.match(text, chain=False, mode="command")
+CommandRegistry.help(command=None)
+CommandRegistry.render_llm_context(detailed=False)
 CommandRegistry.commands
 
 # Decorators
@@ -317,6 +323,8 @@ ExecutionCallbacks
 ExecTool
 ```
 
+Upgrading from 0.1.x? See [docs/migration_0.2.md](docs/migration_0.2.md).
+
 ## 💡 Examples
 
 See [example/demo.py](example/demo.py) for a complete calc system with OpenAI/Anthropic integration:
@@ -335,6 +343,7 @@ python -m example.demo --provider anthropic
 | 🇨🇳 中文 README | [README_zh.md](README_zh.md) |
 | 🇺🇸 English | [docs/index_en.md](docs/index_en.md) |
 | 🇨🇳 中文 | [docs/index_zh.md](docs/index_zh.md) |
+| Migration | [docs/migration_0.2.md](docs/migration_0.2.md) |
 
 ## 📄 License
 

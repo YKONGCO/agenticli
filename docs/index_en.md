@@ -8,6 +8,7 @@ Welcome to the agenticli documentation. This page provides an overview of the ag
 - [Core Concepts](#core-concepts)
 - [Command Definition](#command-definition)
 - [API Reference](#api-reference)
+- [0.2.0 Migration Guide](migration_0.2.md)
 
 ---
 
@@ -46,8 +47,9 @@ class Calc:
 registry = CommandRegistry()
 registry.register(Calc)
 
-print(registry.get_llm_prompt())
-print(registry.parse_and_execute("calc add 10 20 30"))
+print(registry.render_llm_context())
+result = registry.execute("calc add 10 20 30")
+print(result.value if result.ok else result.error.render())
 ```
 
 ---
@@ -174,11 +176,11 @@ registry.register_spec(wrap_tool(MyTool()))
 
 ### Importing External Framework Tools
 
-Use helpers from `agenticli.tooling` to wrap existing framework tools into
+Use helpers from `agenticli.adapters` to wrap existing framework tools into
 `CommandSpec` values:
 
 ```python
-from agenticli.tooling import (
+from agenticli.adapters import (
     wrap_autogen_tool,
     wrap_langchain_tool,
     wrap_openai_tool_schema,
@@ -219,17 +221,43 @@ weather "New York" --unit fahrenheit
 
 ### Chain Operators and Quotes
 
-`chain_execute()` and `chain_execute_async()` support `;`, `&&`, and `||`.
+`execute(..., chain=True)` and `execute_async(..., chain=True)` support `;`, `&&`, and `||`.
 The chain splitter respects quotes, so operators inside quoted arguments do
 not split the command:
 
 ```bash
-registry.chain_execute('say "hello ; world" ; say done')
-registry.chain_execute('say "hello && world" && say ok')
+registry.execute('say "hello ; world" ; say done', chain=True)
+registry.execute('say "hello && world" && say ok', chain=True)
 ```
 
 The single pipe operator `|`, redirection, glob expansion, variable expansion,
 and command substitution are not shell-expanded by agenticli.
+
+---
+
+## Error Handling
+
+Invalid command input returns structured errors instead of raising parser
+exceptions:
+
+```python
+result = registry.execute('weather "Beijing')
+assert result.ok is False
+assert result.error.code == "parse_error"
+
+result = registry.execute("/")
+assert result.ok is False
+assert result.error.code == "unknown_command"
+
+items = registry.execute("missing && weather Beijing", chain=True)
+# ["Error: Unknown command"]
+```
+
+For command groups, unknown subcommands are reported as unknown commands:
+
+```python
+registry.execute("calc missing 1 2")
+```
 
 ---
 
@@ -258,20 +286,12 @@ registry = CommandRegistry(
 | `unregister(name)` | Remove a command |
 | `get(name)` | Get CommandSpec by name |
 | `has(name)` | Check if command exists |
-| `parse(command_str)` | Parse without executing |
-| `parse_and_execute(command_str)` | Parse and execute, return value or error |
-| `parse_and_execute_async(command_str)` | Async parse and execute |
-| `execute(command_str)` | Execute and return ExecutionResult |
-| `execute_async(command_str)` | Async execute and return ExecutionResult |
-| `chain_execute(command_str)` | Execute a chain of commands |
-| `chain_execute_async(command_str)` | Async execute a chain of commands |
-| `chain_hit(command_str)` | Match each command in a chain without executing |
-| `chain_has(command_str)` | Check whether all commands in a chain are registered |
-| `render_help(command)` | Get help text |
-| `detect(text)` | Detect a registered command mentioned in free-form text |
-| `match_command(text)` | Match text against registered command names |
-| `is_command(text)` | Check whether text looks like a registered command |
-| `get_llm_prompt(detailed)` | Generate LLM context string |
+| `parse(command_str, chain=False)` | Parse without executing; set `chain=True` for command chains |
+| `execute(command_str, chain=False)` | Execute and return `ExecutionResult`; set `chain=True` to return a list of values/errors |
+| `execute_async(command_str, chain=False)` | Async execute with the same chain behavior |
+| `match(text, chain=False, mode="command")` | Match command text, command chains, or natural language with `mode="natural"` |
+| `help(command=None)` | Get help text |
+| `render_llm_context(detailed=False)` | Generate LLM command context string |
 | `commands` | List visible registered command names |
 
 #### CliCommand
@@ -431,16 +451,16 @@ Execute multiple commands with operators:
 
 ```python
 # Sequential: execute all
-registry.chain_execute("cmd1 ; cmd2")
+registry.execute("cmd1 ; cmd2", chain=True)
 
 # AND: stop if any fails
-registry.chain_execute("cmd1 && cmd2")
+registry.execute("cmd1 && cmd2", chain=True)
 
 # OR: stop if any succeeds
-registry.chain_execute("cmd1 || cmd2")
+registry.execute("cmd1 || cmd2", chain=True)
 
 # Operators inside quotes are treated as argument text
-registry.chain_execute('cmd1 "literal && text" ; cmd2')
+registry.execute('cmd1 "literal && text" ; cmd2', chain=True)
 ```
 
 ---

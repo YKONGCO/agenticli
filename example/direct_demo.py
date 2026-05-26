@@ -421,10 +421,17 @@ def build_callbacks_registry() -> CommandRegistry:
 # =============================================================================
 
 
-def demo_parse_and_execute(registry: CommandRegistry) -> None:
-    """Demonstrate parse_and_execute - the simplest way to run a command."""
+def _execute_value(registry: CommandRegistry, command_text: str) -> Any:
+    result = registry.execute(command_text)
+    if isinstance(result, list):
+        return result
+    return result.value if result.ok else result.error.render()
+
+
+def demo_execute_value(registry: CommandRegistry) -> None:
+    """Demonstrate execute - the simplest way to run a command and unwrap value."""
     print("\n" + "=" * 70)
-    print("DEMO: parse_and_execute (parse string and execute in one call)")
+    print("DEMO: execute value (parse string and execute in one call)")
     print("=" * 70)
 
     test_cases = [
@@ -440,7 +447,7 @@ def demo_parse_and_execute(registry: CommandRegistry) -> None:
 
     for cmd in test_cases:
         print(f"\nInput:  {cmd}")
-        result = registry.parse_and_execute(cmd)
+        result = _execute_value(registry, cmd)
         print(f"Output: {json.dumps(result, indent=2, ensure_ascii=False)}")
 
 
@@ -495,9 +502,9 @@ def demo_parse_only(registry: CommandRegistry) -> None:
 
 
 def demo_hit_detection(registry: CommandRegistry) -> None:
-    """Demonstrate detect - find commands in natural language text."""
+    """Demonstrate match(mode='natural') - find commands in natural language text."""
     print("\n" + "=" * 70)
-    print("DEMO: detect (find commands in natural language)")
+    print("DEMO: match(mode='natural') (find commands in natural language)")
     print("=" * 70)
 
     test_cases = [
@@ -509,17 +516,17 @@ def demo_hit_detection(registry: CommandRegistry) -> None:
 
     for text in test_cases:
         print(f"\nInput:  {text}")
-        hit: HitResult = registry.detect(text)
+        hit: HitResult = registry.match(text, mode="natural")
         print(f"  command: {hit.command}")
         print(f"  confidence: {hit.confidence}")
         if hit.suggested_args:
             print(f"  suggested_args: {hit.suggested_args}")
 
 
-def demo_match_command(registry: CommandRegistry) -> None:
-    """Demonstrate match_command - check if text is a command."""
+def demo_match(registry: CommandRegistry) -> None:
+    """Demonstrate match - check if text is a command."""
     print("\n" + "=" * 70)
-    print("DEMO: match_command (check if text is a command)")
+    print("DEMO: match (check if text is a command)")
     print("=" * 70)
 
     test_cases = [
@@ -531,8 +538,8 @@ def demo_match_command(registry: CommandRegistry) -> None:
 
     for text in test_cases:
         print(f"\nInput:  {text}")
-        match = registry.match_command(text)
-        print(f"  is_command: {match.confidence > 0}")
+        match = registry.match(text)
+        print(f"  matched: {match.confidence > 0}")
         print(f"  confidence: {match.confidence}")
         print(f"  match_type: {match.match_type}")
         if match.args_str:
@@ -542,30 +549,30 @@ def demo_match_command(registry: CommandRegistry) -> None:
 def demo_help_rendering(registry: CommandRegistry) -> None:
     """Demonstrate help rendering."""
     print("\n" + "=" * 70)
-    print("DEMO: render_help (generate help text)")
+    print("DEMO: help (generate help text)")
     print("=" * 70)
 
     print("\n--- All commands help ---")
-    print(registry.render_help())
+    print(registry.help())
 
     print("\n--- Specific command help ---")
-    print(registry.render_help("echo"))
+    print(registry.help("echo"))
 
     print("\n--- Command group help ---")
-    print(registry.render_help("string"))
+    print(registry.help("string"))
 
 
 def demo_llm_prompt(registry: CommandRegistry) -> None:
     """Demonstrate LLM prompt generation."""
     print("\n" + "=" * 70)
-    print("DEMO: get_llm_prompt (generate prompt for LLM)")
+    print("DEMO: render_llm_context (generate command context for LLM)")
     print("=" * 70)
 
     print("\n--- Brief prompt ---")
-    print(registry.get_llm_prompt(detailed=False))
+    print(registry.render_llm_context(detailed=False))
 
     print("\n--- Detailed prompt ---")
-    print(registry.get_llm_prompt(detailed=True))
+    print(registry.render_llm_context(detailed=True))
 
 
 def demo_registry_inspection(registry: CommandRegistry) -> None:
@@ -643,11 +650,11 @@ def demo_all_features() -> None:
 
     registry = build_registry()
 
-    demo_parse_and_execute(registry)
+    demo_execute_value(registry)
     demo_execute_with_result(registry)
     demo_parse_only(registry)
     demo_hit_detection(registry)
-    demo_match_command(registry)
+    demo_match(registry)
     demo_help_rendering(registry)
     demo_llm_prompt(registry)
     demo_registry_inspection(registry)
@@ -689,3 +696,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

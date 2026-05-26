@@ -46,66 +46,72 @@ registry.register(add)
 registry.register(GreetCommand)
 
 
+def execute_value(command_text: str):
+    result = registry.execute(command_text)
+    if isinstance(result, list):
+        return result
+    return result.value if result.ok else result.error.render()
+
+
 # Simple usage
 print("=== Basic usage ===")
-print(registry.parse_and_execute('hello --name "World"'))
+print(execute_value('hello --name "World"'))
 
 print("\n=== Short options + bool flag ===")
-print(registry.parse_and_execute("hello -n Alice -l"))
+print(execute_value("hello -n Alice -l"))
 
 print("\n=== Mix short and full options ===")
-print(registry.parse_and_execute("hello --name Bob -l"))
+print(execute_value("hello --name Bob -l"))
 
 print("\n=== Short options ===")
-print(registry.parse_and_execute("add -a 10 -b 20"))
+print(execute_value("add -a 10 -b 20"))
 
 print("\n=== Full options ===")
-print(registry.parse_and_execute("add --a 100 --b 200"))
+print(execute_value("add --a 100 --b 200"))
 
 print("\n=== Class-based command ===")
-print(registry.parse_and_execute("class_greet --name Classy"))
+print(execute_value("class_greet --name Classy"))
 
 print("\n=== Help: --help (global) ===")
-print(registry.parse_and_execute("--help"))
+print(execute_value("--help"))
 
 print("\n=== Help: --help hello ===")
-print(registry.parse_and_execute("--help hello"))
+print(execute_value("--help hello"))
 
 print("\n=== Help: hello --help ===")
-print(registry.parse_and_execute("hello --help"))
+print(execute_value("hello --help"))
 
 print("\n=== Help: hello -h (short) ===")
-print(registry.parse_and_execute("hello -h"))
+print(execute_value("hello -h"))
 
 print("\n=== Chain: ; (sequential) ===")
-for result in registry.chain_execute("hello -n A; add -a 1 -b 2; hello -n B"):
+for result in registry.execute("hello -n A; add -a 1 -b 2; hello -n B", chain=True):
     print(result)
 
 print("\n=== Chain: && (AND - stop on failure) ===")
-for result in registry.chain_execute("hello -n A && add -a 1 -b 2 && hello -n B"):
+for result in registry.execute("hello -n A && add -a 1 -b 2 && hello -n B", chain=True):
     print(result)
 
 print("\n=== Chain: || (OR - stop on success) ===")
-for result in registry.chain_execute("hello -n A || add -a 1 -b 2"):
+for result in registry.execute("hello -n A || add -a 1 -b 2", chain=True):
     print(result)
 
 print("\n=== Slash /cmd style ===")
-print(registry.parse_and_execute("/hello -n Slash"))
-print(registry.parse_and_execute("/add -a 5 -b 3"))
+print(execute_value("/hello -n Slash"))
+print(execute_value("/add -a 5 -b 3"))
 
 print("\n=== Chain with / ===")
-for result in registry.chain_execute("/hello -n A && /add -a 10 -b 20"):
+for result in registry.execute("/hello -n A && /add -a 10 -b 20", chain=True):
     print(result)
 
-print("\n=== chain_hit: check if all commands registered ===")
-for hit in registry.chain_hit("hello -n World && add -a 1 -b 2"):
+print("\n=== match(chain=True): check if all commands registered ===")
+for hit in registry.match("hello -n World && add -a 1 -b 2", chain=True):
     print(f"  {hit.command}: confidence={hit.confidence}")
 
-print("\n=== chain_hit: with unknown command ===")
-for hit in registry.chain_hit("hello -n World && unknown_cmd && add -a 1 -b 2"):
+print("\n=== match(chain=True): with unknown command ===")
+for hit in registry.match("hello -n World && unknown_cmd && add -a 1 -b 2", chain=True):
     print(f"  {hit.command}: confidence={hit.confidence}")
 
-print("\n=== chain_has: boolean check ===")
-print(f"All registered: {registry.chain_has('hello -n A && add -a 1 -b 2')}")
-print(f"Has unknown: {registry.chain_has('hello -n A && unknown_cmd')}")
-
+print("\n=== match(chain=True): boolean check ===")
+print(f"All registered: {all(hit.command for hit in registry.match('hello -n A && add -a 1 -b 2', chain=True))}")
+print(f"Has unknown: {all(hit.command for hit in registry.match('hello -n A && unknown_cmd', chain=True))}")

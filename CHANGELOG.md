@@ -7,8 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-26
+
 ### Changed
-- Synchronized README and docs with the current public API surface
+- Simplified `CommandRegistry` to the core `parse`, `execute`, `execute_async`, `match`, `help`, and command-description APIs
+- Moved chain execution behind the `chain=True` parameter on `parse`, `execute`, `execute_async`, and `match`
+- Moved class-command helpers to `agenticli.commands`
+- Moved external tool adapters to `agenticli.adapters`
+- Return structured errors for malformed command input such as unclosed quotes or empty slash commands
+- Report unknown command-group subcommands as `unknown_command` instead of falling back to group help
+- Updated README, examples, and docs for the 0.2.0 API
+
+### Removed
+- Removed legacy `CommandRegistry` aliases: `parse_and_execute`, `parse_and_execute_async`, `chain_execute`, `chain_execute_async`, `chain_hit`, `chain_has`, `render_help`, `detect`, `match_command`, `is_command`, and `get_llm_prompt`
+- Removed the redundant `describe_commands` API before the 0.2.0 release
+- Removed the `agenticli.tooling` compatibility module
+
+### Documentation
+- Added `docs/migration_0.2.md`
 - Clarified `ExecTool` documentation as a callback bridge rather than a shell executor
 
 ## [0.1.4] - 2026-05-25
@@ -96,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` callback bridge for command strings
 
-[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/YKONGCO/agenticli/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/YKONGCO/agenticli/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/YKONGCO/agenticli/compare/v0.1.1...v0.1.2

@@ -43,9 +43,10 @@ Exports:
 """
 
 from agenticli.builtin import ExecTool
+from agenticli.adapters import wrap_autogen_tool, wrap_langchain_tool, wrap_openai_tool_schema, wrap_tool
+from agenticli.commands import CliCommand, command_from_method, command_from_model
 from agenticli.core import CommandRegistry
 from agenticli.decorators import clear_commands, command, command_group, get_registered_commands
-from agenticli.tooling import CliCommand, command_from_method, command_from_model, wrap_autogen_tool, wrap_langchain_tool, wrap_openai_tool_schema, wrap_tool
 from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
 from agenticli.validation import Callback, Injected, Option, State
 

@@ -137,6 +137,13 @@ def build_registry(*, with_lifecycle_logs: bool = False) -> CommandRegistry:
     return registry
 
 
+def _execute_value(registry: CommandRegistry, command_text: str) -> Any:
+    result = registry.execute(command_text)
+    if isinstance(result, list):
+        return result
+    return result.value if result.ok else result.error.render()
+
+
 def build_openai_tools(exec_tool: ExecTool) -> list[dict[str, Any]]:
     return [
         {
@@ -256,7 +263,7 @@ async def run_openai_demo() -> None:
         raise RuntimeError("OPENAI_API_KEY is required for example/demo.py --provider openai")
 
     registry = build_registry()
-    exec_tool = ExecTool(callback=registry.parse_and_execute)
+    exec_tool = ExecTool(callback=lambda command, **kwargs: _execute_value(registry, command))
     tools = [exec_tool.to_schema()]
     client = OpenAI(api_key=api_key, base_url=base_url)
 
@@ -304,7 +311,7 @@ async def run_anthropic_demo() -> None:
         raise RuntimeError("ANTHROPIC_API_KEY is required for example/demo.py --provider anthropic")
 
     registry = build_registry(with_lifecycle_logs=True)
-    exec_tool = ExecTool(callback=registry.parse_and_execute)
+    exec_tool = ExecTool(callback=lambda command, **kwargs: _execute_value(registry, command))
     tools = build_anthropic_tools(exec_tool)
     prompt = '调用exec 工具执行 calc 命令, 可以用calc --help 来查看具体内容'
     client = Anthropic(api_key=api_key, base_url=base_url)

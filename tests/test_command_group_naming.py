@@ -7,6 +7,12 @@ from typing import Annotated
 from agenticli import CommandRegistry, Option, command, command_group
 
 
+def execute_value(registry: CommandRegistry, command_text: str):
+    result = registry.execute(command_text)
+    assert not isinstance(result, list)
+    return result.value if result.ok else result.error.render()
+
+
 @command_group(name="media", description="Media operations")
 class MediaCommands:
     @command(name="gen-image", description="Generate an image")
@@ -39,7 +45,7 @@ def test_command_group_subcommand_executes_with_hyphenated_name():
     registry = CommandRegistry()
     registry.register(MediaCommands)
 
-    result = registry.parse_and_execute('media gen-image "a beautiful sunset"')
+    result = execute_value(registry, 'media gen-image "a beautiful sunset"')
     assert result == "generated: a beautiful sunset"
 
 
@@ -48,7 +54,7 @@ def test_command_group_subcommand_help_with_hyphenated_name():
     registry = CommandRegistry()
     registry.register(MediaCommands)
 
-    help_text = registry.parse_and_execute("media gen-image --help")
+    help_text = execute_value(registry, "media gen-image --help")
     assert "Command: media gen-image" in help_text
     assert "gen-image" in help_text
 
@@ -65,10 +71,10 @@ def test_command_group_all_subcommands_have_hyphenated_names():
     assert not registry.has("media list_images")
 
     # Both should execute
-    result1 = registry.parse_and_execute('media gen-image "test"')
+    result1 = execute_value(registry, 'media gen-image "test"')
     assert result1 == "generated: test"
 
-    result2 = registry.parse_and_execute("media list-images -n 5")
+    result2 = execute_value(registry, "media list-images -n 5")
     assert result2 == ["image_0", "image_1", "image_2"]
 
 
@@ -113,5 +119,5 @@ def test_mixed_underscore_and_hyphen_names_in_same_group():
     assert not registry.has("tools delete-file")
 
     # Execute both to confirm they work
-    assert registry.parse_and_execute('tools create-file "/tmp/test"') == "created: /tmp/test"
-    assert registry.parse_and_execute('tools delete_file "/tmp/test"') == "deleted: /tmp/test"
+    assert execute_value(registry, 'tools create-file "/tmp/test"') == "created: /tmp/test"
+    assert execute_value(registry, 'tools delete_file "/tmp/test"') == "deleted: /tmp/test"

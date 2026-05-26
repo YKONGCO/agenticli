@@ -11,6 +11,18 @@ from agenticli import CliCommand, CommandRegistry, ExecutionCallbacks, Option, c
 from agenticli.validation import build_adapter
 
 
+def execute_value(registry: CommandRegistry, command_text: str):
+    result = registry.execute(command_text)
+    assert not isinstance(result, list)
+    return result.value if result.ok else result.error.render()
+
+
+async def execute_value_async(registry: CommandRegistry, command_text: str):
+    result = await registry.execute_async(command_text)
+    assert not isinstance(result, list)
+    return result.value if result.ok else result.error.render()
+
+
 @command(name="coerce")
 def coerce(
     count: Annotated[int, Option(short="n")],
@@ -167,13 +179,13 @@ def _build_registry() -> CommandRegistry:
 @pytest.mark.parametrize(("command_text", "expected"), _coerce_cases())
 def test_generated_numeric_and_flag_matrix(command_text: str, expected: tuple[int, float, bool]):
     registry = _build_registry()
-    assert registry.parse_and_execute(command_text) == expected
+    assert execute_value(registry, command_text) == expected
 
 
 @pytest.mark.parametrize(("command_text", "expected"), _list_cases())
 def test_generated_list_matrix(command_text: str, expected: object):
     registry = _build_registry()
-    assert registry.parse_and_execute(command_text) == expected
+    assert execute_value(registry, command_text) == expected
 
 
 @pytest.mark.parametrize(
@@ -184,13 +196,13 @@ def test_generated_list_matrix(command_text: str, expected: object):
 )
 def test_generated_tuple_input_matrix(command_text: str, expected: tuple[int, int]):
     registry = _build_registry()
-    assert registry.parse_and_execute(command_text) == expected
+    assert execute_value(registry, command_text) == expected
 
 
 @pytest.mark.parametrize(("command_text", "snippet"), _help_cases())
 def test_generated_help_forms(command_text: str, snippet: str):
     registry = _build_registry()
-    assert snippet in registry.parse_and_execute(command_text)
+    assert snippet in execute_value(registry, command_text)
 
 
 @pytest.mark.parametrize(
@@ -199,20 +211,20 @@ def test_generated_help_forms(command_text: str, snippet: str):
 )
 def test_generated_boolean_flag_matrix(token: str, expected: bool):
     registry = _build_registry()
-    assert registry.parse_and_execute(f"toggle {token}") is expected
+    assert execute_value(registry, f"toggle {token}") is expected
 
 
 def test_schema_tool_metadata_is_exposed_and_hidden_fields_stay_hidden():
     registry = _build_registry()
 
-    help_text = registry.parse_and_execute("schema-calc --help")
+    help_text = execute_value(registry, "schema-calc --help")
     assert "Usage: schema-calc value" not in help_text
     assert "Usage: schema-calc --value <number>" in help_text
     assert "example='42.5'" in help_text
     assert "order=1" in help_text
     assert "--mode" not in help_text
 
-    result = registry.parse_and_execute("schema-calc --value 42.5 --flags a --flags b --pair 1 2 --mode safe")
+    result = execute_value(registry, "schema-calc --value 42.5 --flags a --flags b --pair 1 2 --mode safe")
     assert result == {"value": 42.5, "mode": "safe", "flags": ["a", "b"], "pair": ["1", "2"]}
 
 
@@ -220,15 +232,15 @@ def test_parse_and_match_unknown_inputs_and_unknown_help_target():
     registry = _build_registry()
 
     assert registry.parse("missing command") is None
-    assert registry.match_command("/missing arg").command is None
-    assert registry.detect("plain natural language with no command").command is None
-    assert registry.render_help("missing") == "Unknown command: missing"
+    assert registry.match("/missing arg").command is None
+    assert registry.match("plain natural language with no command").command is None
+    assert registry.help("missing") == "Unknown command: missing"
 
 
 def test_registry_get_and_empty_prompt_behaviors():
     empty_registry = CommandRegistry()
     assert empty_registry.get("missing") is None
-    empty_prompt = empty_registry.get_llm_prompt()
+    empty_prompt = empty_registry.render_llm_context()
     assert "You can use the following CLI commands:" in empty_prompt
 
     registry = _build_registry()
@@ -241,8 +253,8 @@ def test_dataclass_model_internal_injection_survives_command_from_model_and_clas
     registry.register_spec(command_from_model("inject-fn", _InjectedArgs, lambda **kwargs: kwargs, description="inject fn"))
     registry.register(_InjectedCommand())
 
-    assert registry.parse_and_execute("inject-fn 3") == {"value": 3, "trace": "trace-token"}
-    assert registry.parse_and_execute("inject-model 4") == {"value": 4, "trace": "trace-token"}
+    assert execute_value(registry, "inject-fn 3") == {"value": 3, "trace": "trace-token"}
+    assert execute_value(registry, "inject-model 4") == {"value": 4, "trace": "trace-token"}
 
 
 def test_async_execution_callbacks_and_async_injection_factory_work():
@@ -269,8 +281,8 @@ def test_async_execution_callbacks_and_async_injection_factory_work():
     )
     registry.register(async_deps)
 
-    assert registry.parse_and_execute("async-deps 9") == (9, {"raw": "async-deps 9"})
-    assert registry.parse_and_execute("zzz 9") == "Error: Unknown command"
+    assert execute_value(registry, "async-deps 9") == (9, {"raw": "async-deps 9"})
+    assert execute_value(registry, "zzz 9") == "Error: Unknown command"
     assert events[0] == ("before", {"value": 9, "state": {"raw": "async-deps 9"}})
     assert events[1] == ("after", (9, {"raw": "async-deps 9"}))
     assert events[2] == ("error", "unknown_command")
@@ -297,7 +309,7 @@ def test_async_api_awaits_callbacks_and_injection_factory_without_sync_bridge():
     )
     registry.register(async_native)
 
-    result = asyncio.run(registry.parse_and_execute_async("async-native 5"))
+    result = asyncio.run(execute_value_async(registry, "async-native 5"))
     assert result == (5, {"raw": "async-native 5"})
     assert events[0] == ("before", {"value": 5, "state": {"raw": "async-native 5"}})
     assert events[1] == ("after", (5, {"raw": "async-native 5"}))
@@ -344,3 +356,4 @@ def test_generated_validator_boolean_string_matrix(raw_args: dict[str, str], exp
 def test_generated_validator_collection_string_matrix(target, raw_args: dict[str, str], expected: dict[str, object]):
     adapter = build_adapter(target)
     assert adapter.validate(raw_args) == expected
+

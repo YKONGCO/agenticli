@@ -131,7 +131,7 @@ These are speculative and depend on user feedback:
 
 1. **Not a shell emulator**: agenticli intentionally does not implement full shell semantics.
 2. **No shell expansion**: glob patterns, variables, command substitution, redirection, and pipe syntax are not expanded by agenticli.
-3. **Limited command chaining**: only `;`, `&&`, and `||` are supported, and only as registry-level execution operators.
+3. **Limited command chaining**: only `;`, `&&`, and `||` are supported through the `chain=True` parser/execution mode.
 4. **No output piping**: command output is returned as structured Python values, not streamed into another command's stdin.
 5. **Quoting is shlex-based**: argument splitting follows Python `shlex`, not every Bash, PowerShell, Cmd, fish, or zsh edge case.
 
@@ -141,7 +141,7 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.1.4**: Current stable release
+- **v0.2.0**: Current stable release
 - **v0.1.3**: Async execution and external tool wrapping
 - **v0.1.2**: Command groups and aliases
 - **v0.1.1**: Validation enhancements

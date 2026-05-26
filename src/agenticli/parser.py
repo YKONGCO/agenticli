@@ -8,9 +8,167 @@ positional arguments, and various argument patterns.
 from __future__ import annotations
 
 import shlex
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from agenticli.types import ArgSpec, ParseResult
+
+
+ChainOperator = Literal[";", "&&", "||"]
+
+
+@dataclass(frozen=True)
+class ChainSegment:
+    """A command segment in a chain and the operator that follows it."""
+
+    command: str
+    operator_after: ChainOperator | None = None
+
+
+class CommandLineParser:
+    """Parses command-line text before command-specific argument parsing."""
+
+    OPERATORS = {";", "&&", "||"}
+
+    def parse(self, command_str: str, *, chain: bool = False) -> str | list[ChainSegment]:
+        """Preprocess command text, optionally splitting it as a command chain."""
+        command_str = self.preprocess(command_str)
+        if chain:
+            return self.split_chain(command_str)
+        return command_str
+
+    @classmethod
+    def split_chain(cls, command_str: str) -> list[ChainSegment]:
+        """Split command chains on operators while respecting shell-style quotes."""
+        tokens = cls.split_chain_tokens(command_str)
+        if not tokens:
+            return []
+
+        segments: list[ChainSegment] = []
+        pending_cmd = tokens[0]
+        i = 1
+
+        while i < len(tokens):
+            token = tokens[i]
+            if token in cls.OPERATORS:
+                if pending_cmd:
+                    segments.append(ChainSegment(pending_cmd, token))  # type: ignore[arg-type]
+                pending_cmd = ""
+                i += 1
+                continue
+            pending_cmd = f"{pending_cmd} {token}".strip()
+            i += 1
+
+        if pending_cmd:
+            segments.append(ChainSegment(pending_cmd))
+        return segments
+
+    @staticmethod
+    def parser_parts(command_name: str, parts: list[str]) -> list[str]:
+        """Prepare tokenized input for CommandParser."""
+        command_parts = command_name.split()
+        consumed = len(command_parts)
+        return [command_parts[-1], *parts[consumed:]]
+
+    @staticmethod
+    def preprocess(command_str: str) -> str:
+        """Apply command-level preprocessing before parsing or chain splitting."""
+        return CommandLineParser.preprocess_backslash(command_str)
+
+    @staticmethod
+    def preprocess_backslash(command_str: str) -> str:
+        """Handle backslash line continuations."""
+        if "\\\n" not in command_str and "\\\r" not in command_str:
+            return command_str
+
+        result: list[str] = []
+        i = 0
+
+        while i < len(command_str):
+            ch = command_str[i]
+
+            if ch == "\\" and i + 1 < len(command_str):
+                next_ch = command_str[i + 1]
+
+                if next_ch == "\n":
+                    result.append(" ")
+                    i += 2
+                    continue
+
+                if next_ch == "\r":
+                    result.append(" ")
+                    i += 2
+                    if i < len(command_str) and command_str[i] == "\n":
+                        i += 1
+                    continue
+
+            result.append(ch)
+            i += 1
+
+        return "".join(result)
+
+    @staticmethod
+    def split_chain_tokens(command_str: str) -> list[str]:
+        """Split command chains on operators while respecting shell-style quotes."""
+        tokens: list[str] = []
+        current: list[str] = []
+        quote: str | None = None
+        escaped = False
+        i = 0
+
+        while i < len(command_str):
+            ch = command_str[i]
+
+            if escaped:
+                current.append(ch)
+                escaped = False
+                i += 1
+                continue
+
+            if ch == "\\":
+                current.append(ch)
+                escaped = True
+                i += 1
+                continue
+
+            if quote:
+                current.append(ch)
+                if ch == quote:
+                    quote = None
+                i += 1
+                continue
+
+            if ch in {"'", '"'}:
+                current.append(ch)
+                quote = ch
+                i += 1
+                continue
+
+            if command_str.startswith("&&", i) or command_str.startswith("||", i):
+                command = "".join(current).strip()
+                if command:
+                    tokens.append(command)
+                tokens.append(command_str[i : i + 2])
+                current = []
+                i += 2
+                continue
+
+            if ch == ";":
+                command = "".join(current).strip()
+                if command:
+                    tokens.append(command)
+                tokens.append(";")
+                current = []
+                i += 1
+                continue
+
+            current.append(ch)
+            i += 1
+
+        command = "".join(current).strip()
+        if command:
+            tokens.append(command)
+        return tokens
 
 
 class CommandParser:

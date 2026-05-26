@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -55,11 +55,12 @@ class Calc:
 registry = CommandRegistry()
 registry.register(Calc)
 
-print(registry.get_llm_prompt())
+print(registry.render_llm_context())
 # -> You can use the following CLI commands:
 #     calc: 计算器命令
 
-registry.parse_and_execute("calc add 10 20 30")
+result = registry.execute("calc add 10 20 30")
+print(result.value if result.ok else result.error.render())
 # -> {"result": 60.0}
 ```
 
@@ -101,7 +102,7 @@ registry.parse_and_execute("calc add 10 20 30")
 | 🔄 **生命周期钩子** | `before_execute`、`after_execute`、`on_error` |
 | 🏃 **内部注入** | 回调/状态对 CLI 隐藏，但可在运行时注入 |
 | 🔗 **链式执行** | 支持引号感知的 `cmd1 && cmd2 || cmd3 ; cmd4` |
-| ⏳ **异步执行** | 原生支持 `execute_async`、`parse_and_execute_async`、`chain_execute_async` |
+| ⏳ **异步执行** | 原生支持 `execute_async(..., chain=False)` |
 | 🔌 **外部工具导入** | 可将 LangChain / AutoGen / OpenAI 风格工具包装成 `CommandSpec` |
 
 ## 📝 命令注册方式
@@ -182,7 +183,11 @@ registry.register(AddCommand())
 ```python
 from agenticli import ExecTool
 
-exec_tool = ExecTool(callback=registry.parse_and_execute)
+def run_command(command: str, **kwargs):
+    result = registry.execute(command)
+    return result.value if result.ok else result.error.render()
+
+exec_tool = ExecTool(callback=run_command)
 ```
 
 ### 生命周期回调
@@ -217,12 +222,12 @@ def process(
 
 ## 🔌 导入外部工具
 
-可以通过 `agenticli.tooling` 中的包装函数，把外部框架已有工具导入为
+可以通过 `agenticli.adapters` 中的包装函数，把外部框架已有工具导入为
 `agenticli` 命令：
 
 ```python
 from agenticli import CommandRegistry
-from agenticli.tooling import (
+from agenticli.adapters import (
     wrap_autogen_tool,
     wrap_langchain_tool,
     wrap_openai_tool_schema,
@@ -252,8 +257,7 @@ registry.register_spec(
 
 ```python
 result = await registry.execute_async("calc add 1 2 3")
-value = await registry.parse_and_execute_async("calc add 1 2 3")
-items = await registry.chain_execute_async("cmd1 ; cmd2")
+items = await registry.execute_async("cmd1 ; cmd2", chain=True)
 ```
 
 ## 🧾 命令语法
@@ -281,6 +285,17 @@ say "hello ; world" ; say done
 say "hello && world" && say ok
 ```
 
+不正确的输入会返回结构化错误：
+
+```python
+result = registry.execute('weather "Beijing')
+assert result.ok is False
+assert result.error.code == "parse_error"
+
+registry.execute("missing && weather Beijing", chain=True)
+# ["Error: Unknown command"]
+```
+
 ## 📦 稳定 API
 
 ```python
@@ -291,20 +306,12 @@ CommandRegistry.register_spec(spec)
 CommandRegistry.unregister(name)
 CommandRegistry.get(name)
 CommandRegistry.has(name)
-CommandRegistry.parse(command_str)
-CommandRegistry.execute(command_str)
-CommandRegistry.execute_async(command_str)
-CommandRegistry.parse_and_execute(command_str)
-CommandRegistry.parse_and_execute_async(command_str)
-CommandRegistry.chain_execute(command_str)
-CommandRegistry.chain_execute_async(command_str)
-CommandRegistry.chain_hit(command_str)
-CommandRegistry.chain_has(command_str)
-CommandRegistry.render_help(command)
-CommandRegistry.detect(text)
-CommandRegistry.match_command(text)
-CommandRegistry.is_command(text)
-CommandRegistry.get_llm_prompt(detailed=False)
+CommandRegistry.parse(command_str, chain=False)
+CommandRegistry.execute(command_str, chain=False)
+CommandRegistry.execute_async(command_str, chain=False)
+CommandRegistry.match(text, chain=False, mode="command")
+CommandRegistry.help(command=None)
+CommandRegistry.render_llm_context(detailed=False)
 CommandRegistry.commands
 
 # Decorators
@@ -327,6 +334,8 @@ ExecutionCallbacks
 ExecTool
 ```
 
+从 0.1.x 升级请看 [docs/migration_0.2.md](docs/migration_0.2.md)。
+
 ## 💡 示例
 
 完整的计算器与 OpenAI / Anthropic 集成示例见 [example/demo.py](example/demo.py)：
@@ -345,6 +354,7 @@ python -m example.demo --provider anthropic
 | 🇨🇳 中文 | [README_zh.md](README_zh.md) |
 | 🇺🇸 English Docs | [docs/index_en.md](docs/index_en.md) |
 | 🇨🇳 中文文档 | [docs/index_zh.md](docs/index_zh.md) |
+| Migration | [docs/migration_0.2.md](docs/migration_0.2.md) |
 
 ## 📄 License
 
