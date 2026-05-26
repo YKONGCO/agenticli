@@ -13,7 +13,7 @@ examples = [
     "anthropic>=0.104.1",
 ]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
 ]
 
