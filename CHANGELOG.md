@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-30
+
+### Added
+- Support for registering `@command_group` class instances with bound context (e.g., `registry.register(UserService(user_id="alice"))`)
+- `injection_factories` are now properly copied when creating nested CommandSpecs in `_register_command_group`
+- `simple_context_demo.py` example demonstrating context injection via class `__init__`
+- `business_context_demo.py` example demonstrating context injection via `State(factory=...)`
+- `context_init_demo.py` example demonstrating context injection via `command_from_method`
+
+### Fixed
+- Fixed `_register_command_group` to correctly handle instances (was iterating `type(target)` instead of `target`)
+- Fixed `cls = target if is_instance else target` (was incorrectly using `type(target)`)
+
+### Documentation
+- Added usage pattern demos for business context injection
+
 ## [0.2.0] - 2026-05-26
 
 ### Changed
@@ -112,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` callback bridge for command strings
 
-[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/YKONGCO/agenticli/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/YKONGCO/agenticli/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/YKONGCO/agenticli/compare/v0.1.2...v0.1.3

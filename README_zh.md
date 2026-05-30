@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.1-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>

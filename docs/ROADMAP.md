@@ -141,7 +141,8 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.2.0**: Current stable release
+- **v0.2.1**: Current stable release - Instance registration support for command groups
+- **v0.2.0**: Previous stable release
 - **v0.1.3**: Async execution and external tool wrapping
 - **v0.1.2**: Command groups and aliases
 - **v0.1.1**: Validation enhancements

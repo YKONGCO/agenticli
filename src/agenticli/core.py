@@ -77,14 +77,20 @@ class CommandRegistry:
 
         self.register_spec(CommandFactory.from_target(target))
 
-    def _register_command_group(self, cls: type) -> None:
-        """Register a command group class with its subcommands.
+    def _register_command_group(self, target: type | Any) -> None:
+        """Register a command group class or instance with its subcommands.
 
         Args:
-            cls: Class decorated with @command_group.
+            target: Class decorated with @command_group, or an instance of such class.
         """
-        group_info = cls.__command_group__
+        if not hasattr(target, "__command_group__"):
+            raise TypeError(f"Expected @command_group decorated class, got {target!r}")
+
+        is_instance = not inspect.isclass(target)
+        cls = target if is_instance else target
+        group_info = target.__command_group__
         group_name = group_info["name"]
+
         self._check_conflicts(
             CommandSpec(
                 name=group_name,
@@ -104,10 +110,12 @@ class CommandRegistry:
         )
         self._commands[group_name] = group_spec
 
-        for attr_name in dir(cls):
+        # For instances, iterate on the instance to get bound methods
+        iterate_target = target if is_instance else cls
+        for attr_name in dir(iterate_target):
             if attr_name.startswith("_"):
                 continue
-            attr = getattr(cls, attr_name)
+            attr = getattr(iterate_target, attr_name)
             if callable(attr) and hasattr(attr, "__command_spec__"):
                 spec: CommandSpec = attr.__command_spec__
                 nested_name = f"{group_name} {spec.name}"
@@ -124,8 +132,10 @@ class CommandRegistry:
                     validator=spec.validator,
                     source=spec.source,
                     help_text=spec.help_text.replace(f"Command: {spec.name}", f"Command: {group_name} {spec.name}"),
+                    injections=dict(spec.injections),
+                    injection_factories=dict(spec.injection_factories),
                 )
-                nested._group_class = cls  # type: ignore[attr-defined]
+                nested._group_class = target  # type: ignore[attr-defined]
                 nested._method_name = attr_name  # type: ignore[attr-defined]
                 self._commands[nested.name] = nested
 
@@ -502,7 +512,8 @@ class CommandRegistry:
             await self._run_before_callback_async(context)
 
             if hasattr(spec, "_group_class") and hasattr(spec, "_method_name"):
-                instance = spec._group_class()  # type: ignore[attr-defined]
+                group_target = spec._group_class  # type: ignore[attr-defined]
+                instance = group_target() if inspect.isclass(group_target) else group_target
                 method = getattr(instance, spec._method_name)  # type: ignore[attr-defined]
                 result = await self._resolve_result_async(method(**sig_args))
                 context.result = result
