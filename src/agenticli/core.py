@@ -10,7 +10,7 @@ from __future__ import annotations
 import difflib
 import inspect
 import shlex
-from typing import Any
+from typing import Any, Callable
 
 from agenticli.factory import CommandFactory
 from agenticli.matcher import CommandMatcher
@@ -90,6 +90,7 @@ class CommandRegistry:
         cls = target if is_instance else target
         group_info = target.__command_group__
         group_name = group_info["name"]
+        group_include_in_prompt = group_info.get("include_in_prompt", True)
 
         self._check_conflicts(
             CommandSpec(
@@ -107,6 +108,7 @@ class CommandRegistry:
             usage=group_name,
             source="group",
             help_text=group_info["description"],
+            include_in_prompt=group_include_in_prompt,
         )
         self._commands[group_name] = group_spec
 
@@ -154,6 +156,49 @@ class CommandRegistry:
         self._commands[spec.name] = spec
         for alias in spec.aliases:
             self._commands[alias] = spec
+
+    def to_dict(self) -> list[dict[str, Any]]:
+        """Return JSON-safe dicts for every user-registered command.
+
+        Built-in commands such as ``--help`` are skipped because they are
+        re-registered on demand. Use ``CommandSpec.to_dict()`` directly on
+        a single spec if you need every command.
+
+        Returns:
+            List of dicts, one per registered command. Pass each entry to
+            ``CommandSpec.from_dict()`` to restore it, and pass a
+            ``func_resolver`` to make the result executable.
+        """
+        return [spec.to_dict() for name, spec in self._commands.items() if not name.startswith("--")]
+
+    def from_dict(
+        self,
+        data: list[dict[str, Any]],
+        *,
+        func_resolver: Callable[[str, str | None], Callable[..., Any]] | None = None,
+        factory_resolver: Callable[[str, str | None], Callable[..., Any]] | None = None,
+    ) -> list[CommandSpec]:
+        """Register all specs in ``data`` and return the new ``CommandSpec`` objects.
+
+        Args:
+            data: List of dicts previously produced by ``to_dict()`` or
+                by ``CommandSpec.to_dict()`` directly.
+            func_resolver: Optional callable mapping ``(name, parent)`` to
+                the original handler. Required for execution.
+            factory_resolver: Optional callable mapping ``(name, parent)``
+                to the original injection factory.
+
+        Returns:
+            The list of newly-registered ``CommandSpec`` instances.
+        """
+        specs = [CommandSpec.from_dict(
+            entry,
+            func_resolver=func_resolver,
+            factory_resolver=factory_resolver,
+        ) for entry in data]
+        for spec in specs:
+            self.register_spec(spec)
+        return specs
 
     def _check_conflicts(self, spec: CommandSpec) -> None:
         """Check for naming conflicts before registration.
@@ -794,6 +839,8 @@ class CommandRegistry:
         seen: set[str] = set()
         for _, spec in sorted(self._commands.items()):
             if spec.name.startswith("--") or spec.parent or spec.name in seen or spec.hidden:
+                continue
+            if not spec.include_in_prompt:
                 continue
             seen.add(spec.name)
             if detailed:

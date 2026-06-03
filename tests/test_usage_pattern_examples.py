@@ -7,6 +7,7 @@ from example import (
     command_group_demo,
     decorator_demo,
     external_adapters_demo,
+    prompt_filtering_demo,
     wrap_tool_demo,
 )
 
@@ -83,3 +84,24 @@ def test_external_adapters_demo():
     assert external_adapters_demo.execute_value(registry, "ag_join --left agent --right cli --sep /") == {
         "joined": "agent/cli"
     }
+
+
+def test_prompt_filtering_demo_hides_optional_commands_from_llm():
+    registry = prompt_filtering_demo.build_registry()
+
+    context = registry.render_llm_context()
+    assert "greet" in context
+    assert "reports" in context
+    assert "reset" not in context
+    assert "backup" not in context
+    assert "ops" not in context
+    assert "reports secret" not in context
+
+    help_text = registry.help()
+    assert "reset" in help_text
+    assert "ops" in help_text
+    assert "secret" in registry.help("reports")
+
+    assert prompt_filtering_demo.execute_value(registry, "reset") == {"reset": True}
+    assert prompt_filtering_demo.execute_value(registry, "ops deploy") == {"deployed": True}
+    assert prompt_filtering_demo.execute_value(registry, "reports secret") == {"report": "secret"}

@@ -23,6 +23,7 @@ def command(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
+    include_in_prompt: bool = True,
 ):
     """Decorator to register a function as a CLI command.
 
@@ -35,6 +36,10 @@ def command(
         aliases: List of alternative names for the command.
         hidden: Whether to hide from command list.
         deprecated: Deprecation message if command is deprecated.
+        include_in_prompt: Whether to expose this command to the LLM via
+            ``render_llm_context()``. Defaults to True. Set False to keep
+            the command available to CLI users but invisible to the LLM
+            (e.g., admin-only or interactive commands).
 
     Returns:
         Decorator function that wraps and registers the target.
@@ -60,6 +65,7 @@ def command(
             help_text=adapter.help_text(cmd_name, description or (func.__doc__ or "")),
             hidden=hidden,
             deprecated=deprecated,
+            include_in_prompt=include_in_prompt,
             injections=dict(adapter.injections),
             injection_factories=dict(adapter.injection_factories),
         )
@@ -75,7 +81,7 @@ def command(
     return decorator
 
 
-def command_group(name: str, description: str = ""):
+def command_group(name: str, description: str = "", *, include_in_prompt: bool = True):
     """Decorator for a class that contains subcommands.
 
     Marks a class as a command group, where public methods decorated with
@@ -85,6 +91,11 @@ def command_group(name: str, description: str = ""):
     Args:
         name: Group name, used as the parent command name.
         description: Group description for help text.
+        include_in_prompt: Whether to expose this group to the LLM via
+            ``render_llm_context()``. Defaults to True. Set False to keep
+            the group available to CLI users but invisible to the LLM
+            (e.g., admin-only operations). Subcommands retain their own
+            setting and are not affected by the group's flag.
 
     Returns:
         Decorator function that marks and configures the class.
@@ -112,7 +123,11 @@ def command_group(name: str, description: str = ""):
                 if spec in _COMMAND_REGISTRY:
                     _COMMAND_REGISTRY.remove(spec)
 
-        cls.__command_group__ = {"name": name, "description": description}
+        cls.__command_group__ = {
+            "name": name,
+            "description": description,
+            "include_in_prompt": include_in_prompt,
+        }
         return cls
 
     return decorator

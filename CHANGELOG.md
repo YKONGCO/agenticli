@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-03
+
+### Added
+- `include_in_prompt: bool = True` field on `CommandSpec` to control whether a command/group appears in `render_llm_context()`. Plumbed through `@command`, `@command_group`, `CliCommand`, `command_from_model`, and `command_from_method`. Hidden from LLM but still visible in `help()` and still executable.
+- `example/prompt_filtering_demo.py` demonstrating command-level and group-level prompt filtering.
+- `CommandSpec.to_dict()` / `CommandSpec.from_dict()` for JSON-safe serialization of registered commands (callables like `func` and `injection_factories` are excluded; pass a `func_resolver` for roundtrip execution).
+- `ArgSpec.to_dict()` / `ArgSpec.from_dict()` companion serialization.
+- `CommandRegistry.to_dict()` / `CommandRegistry.from_dict()` for snapshotting an entire registry.
+
 ## [0.2.1] - 2026-05-30
 
 ### Added
@@ -128,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` callback bridge for command strings
 
-[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/YKONGCO/agenticli/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/YKONGCO/agenticli/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/YKONGCO/agenticli/compare/v0.1.3...v0.1.4

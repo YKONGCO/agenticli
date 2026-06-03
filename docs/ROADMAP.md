@@ -1,6 +1,6 @@
 # agenticli Roadmap
 
-> 📌 Last updated: 2026-05-26
+> 📌 Last updated: 2026-06-03
 
 ## Project Vision
 
@@ -40,10 +40,35 @@ agenticli converts functions, classes, and schema-based tools into a stable CLI 
 - [x] `--help` for commands and groups
 - [x] Fuzzy command detection
 - [x] Lifecycle callbacks
+- [x] `include_in_prompt` flag to opt commands/groups out of `render_llm_context()`
 
 ---
 
 ## ✅ Recently Completed
+
+### CommandSpec Serialization
+**Status**: Completed
+
+`CommandSpec`, `ArgSpec`, and `CommandRegistry` now support JSON-safe
+`to_dict()` / `from_dict()` for persistence, inspection, and cross-process
+transport. Callables (`func`, `injection_factories`) are excluded from the
+output; pass a `func_resolver` to `from_dict()` to re-bind them for
+roundtrip execution.
+
+```python
+snapshot = registry.to_dict()                    # list[dict], JSON-safe
+registry2 = CommandRegistry()
+registry2.from_dict(snapshot, func_resolver=...) # re-bind callables
+```
+
+### LLM Prompt Visibility Control
+**Status**: Completed
+
+`include_in_prompt: bool = True` on `CommandSpec` (and exposed via
+`@command`, `@command_group`, `CliCommand`, `command_from_model`,
+`command_from_method`) lets you keep a command callable and visible in
+`help()` while hiding its description from the LLM via
+`render_llm_context()`. See `example/prompt_filtering_demo.py`.
 
 ### Backslash Line Continuation
 **Status**: Completed
@@ -85,7 +110,7 @@ observability, and model reliability.
 - [ ] Replace placeholder repository links in CHANGELOG with the canonical project URL
 
 ### P1: LLM Tool Semantics
-- [ ] Stable `CommandSpec` serialization for persistence, inspection, and cross-process transport
+- [x] Stable `CommandSpec` serialization for persistence, inspection, and cross-process transport
 - [ ] Export command specs to JSON Schema / OpenAI-style tool definitions where useful
 - [ ] Improve schema import coverage for common tool ecosystems
 - [ ] Add compact and detailed prompt rendering modes with predictable token budgets
@@ -141,8 +166,9 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.2.1**: Current stable release - Instance registration support for command groups
-- **v0.2.0**: Previous stable release
+- **v0.2.2**: Current stable release - `include_in_prompt` filter, `CommandSpec`/`ArgSpec`/`CommandRegistry` serialization
+- **v0.2.1**: Previous stable release - Instance registration support for command groups
+- **v0.2.0**: Older stable release
 - **v0.1.3**: Async execution and external tool wrapping
 - **v0.1.2**: Command groups and aliases
 - **v0.1.1**: Validation enhancements

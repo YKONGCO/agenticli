@@ -9,6 +9,28 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+def _is_json_safe(value: Any) -> bool:
+    """Return True if ``value`` is a built-in JSON-serializable type."""
+    if isinstance(value, _JSON_SCALARS):
+        return True
+    if isinstance(value, list):
+        return all(_is_json_safe(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(k, str) and _is_json_safe(v) for k, v in value.items())
+    return False
+
+
+def _filter_json_safe(values: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of ``values`` containing only JSON-safe entries.
+
+    Used to drop injection values that hold live objects (database
+    connections, file handles, etc.) when serializing a ``CommandSpec``.
+    """
+    return {key: value for key, value in values.items() if _is_json_safe(value)}
+
 
 @dataclass
 class ArgSpec:
@@ -61,6 +83,72 @@ class ArgSpec:
     excludes: list[str] = field(default_factory=list)
     raw_annotation: Any = str
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe dict representation of this argument spec.
+
+        The ``raw_annotation`` field is omitted because type annotation
+        objects are not generally serializable. The ``type`` field is
+        normalized to a string (``int``, ``list[str]`` etc.) so the result
+        can be passed through ``json.dumps`` without further conversion.
+        """
+        type_value: str
+        if isinstance(self.type, str):
+            type_value = self.type
+        else:
+            type_value = getattr(self.type, "__name__", str(self.type))
+
+        return {
+            "name": self.name,
+            "type": type_value,
+            "default": self.default,
+            "required": self.required,
+            "description": self.description,
+            "enum": self.enum,
+            "short": self.short,
+            "is_flag": self.is_flag,
+            "schema": self.schema,
+            "positional": self.positional,
+            "value_name": self.value_name,
+            "example": self.example,
+            "order": self.order,
+            "position": self.position,
+            "hidden": self.hidden,
+            "repeatable": self.repeatable,
+            "nargs": self.nargs,
+            "requires": list(self.requires),
+            "excludes": list(self.excludes),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ArgSpec:
+        """Build an ``ArgSpec`` from a dict produced by :meth:`to_dict`.
+
+        ``type`` is kept as the string it was serialized as. To execute
+        commands, agenticli's parser re-coerces strings at parse time, so
+        resolving the string back to a Python type is not required.
+        """
+        return cls(
+            name=data["name"],
+            type=data.get("type", "str"),
+            default=data.get("default"),
+            required=data.get("required", False),
+            description=data.get("description", ""),
+            enum=data.get("enum"),
+            short=data.get("short"),
+            is_flag=data.get("is_flag", False),
+            schema=data.get("schema"),
+            positional=data.get("positional", False),
+            value_name=data.get("value_name"),
+            example=data.get("example"),
+            order=data.get("order"),
+            position=data.get("position"),
+            hidden=data.get("hidden", False),
+            repeatable=data.get("repeatable", False),
+            nargs=data.get("nargs"),
+            requires=list(data.get("requires") or []),
+            excludes=list(data.get("excludes") or []),
+        )
+
 
 @dataclass
 class CommandSpec:
@@ -82,6 +170,10 @@ class CommandSpec:
         help_text: Complete help text content.
         hidden: Whether to hide from command list, defaults to False.
         deprecated: If set, indicates command is deprecated with deprecation notice.
+        include_in_prompt: Whether to expose this command's description to the
+            LLM via ``render_llm_context()``. Defaults to True. Set False to
+            keep the command available to CLI users but invisible to the LLM
+            (e.g., admin-only or interactive commands).
         injections: Dictionary of static values injected at execution time.
         injection_factories: Dictionary of factory functions for generating injected values.
     """
@@ -98,8 +190,104 @@ class CommandSpec:
     help_text: str = ""
     hidden: bool = False
     deprecated: str | None = None
+    include_in_prompt: bool = True
     injections: dict[str, Any] = field(default_factory=dict)
     injection_factories: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe dict representation of this command spec.
+
+        The following fields are intentionally excluded because they hold
+        callables or live objects that cannot be JSON-serialized:
+
+        * ``func`` - the registered handler. Pass a ``func_resolver`` to
+          :meth:`from_dict` if you need to re-bind it.
+        * ``validator`` - the validation adapter. The ``args`` list already
+          carries everything needed to rebuild it.
+        * ``injection_factories`` - dictionaries of callables. Pass a
+          ``factory_resolver`` to :meth:`from_dict` to re-bind them.
+        * ``injections`` - included only if every value is JSON-safe
+          (str, int, float, bool, list, dict, None).
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "args": [arg.to_dict() for arg in self.args],
+            "usage": self.usage,
+            "aliases": list(self.aliases),
+            "parent": self.parent,
+            "source": self.source,
+            "help_text": self.help_text,
+            "hidden": self.hidden,
+            "deprecated": self.deprecated,
+            "include_in_prompt": self.include_in_prompt,
+            "injections": _filter_json_safe(self.injections),
+            "injection_factory_names": list(self.injection_factories.keys()),
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        data: dict[str, Any],
+        *,
+        func_resolver: Callable[[str, str | None], Callable[..., Any]] | None = None,
+        factory_resolver: Callable[[str, str | None], Callable[..., Any]] | None = None,
+    ) -> CommandSpec:
+        """Build a ``CommandSpec`` from a dict produced by :meth:`to_dict`.
+
+        Args:
+            data: Dict previously produced by ``CommandSpec.to_dict()``.
+            func_resolver: Optional callable taking ``(name, parent)`` and
+                returning the original ``func``. Required for execution
+                after deserialization; without it, the returned spec is
+                suitable for inspection only.
+            factory_resolver: Optional callable taking ``(name, parent)``
+                and returning the original factory. The factory names are
+                stored in ``data["injection_factory_names"]``.
+
+        Returns:
+            A new ``CommandSpec`` with ``func`` and ``injection_factories``
+            either resolved or left as no-ops depending on the resolvers.
+        """
+        name = data["name"]
+        parent = data.get("parent")
+
+        func: Callable[..., Any]
+        if func_resolver is not None:
+            func = func_resolver(name, parent)
+        else:
+
+            def _unbound(*_args: Any, **_kwargs: Any) -> Any:
+                raise RuntimeError(
+                    f"command {name!r} was deserialized without a func_resolver; "
+                    "pass a resolver to from_dict() to re-bind the handler"
+                )
+
+            func = _unbound
+
+        factory_names: list[str] = data.get("injection_factory_names") or []
+        injection_factories: dict[str, Callable[..., Any]] = {}
+        if factory_resolver is not None:
+            for fname in factory_names:
+                injection_factories[fname] = factory_resolver(fname, name)
+
+        return cls(
+            name=name,
+            description=data.get("description", ""),
+            func=func,
+            args=[ArgSpec.from_dict(a) for a in data.get("args", [])],
+            usage=data.get("usage", ""),
+            aliases=list(data.get("aliases") or []),
+            parent=parent,
+            validator=None,
+            source=data.get("source", "function"),
+            help_text=data.get("help_text", ""),
+            hidden=data.get("hidden", False),
+            deprecated=data.get("deprecated"),
+            include_in_prompt=data.get("include_in_prompt", True),
+            injections=dict(data.get("injections") or {}),
+            injection_factories=injection_factories,
+        )
 
 
 @dataclass

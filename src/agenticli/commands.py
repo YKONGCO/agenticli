@@ -24,6 +24,7 @@ class CliCommand:
     args_model: type | None = None
     hidden: bool = False
     deprecated: str | None = None
+    include_in_prompt: bool = True
 
     async def run(self, **kwargs: Any) -> Any:
         """Execute the command with parsed arguments."""
@@ -49,6 +50,7 @@ class CliCommand:
             help_text=adapter.help_text(name, self.description or ""),
             hidden=self.hidden,
             deprecated=self.deprecated,
+            include_in_prompt=self.include_in_prompt,
             injections=dict(adapter.injections),
             injection_factories=dict(adapter.injection_factories),
         )
@@ -63,6 +65,7 @@ def command_from_model(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
+    include_in_prompt: bool = True,
 ) -> CommandSpec:
     """Expose a dataclass or Pydantic model plus a handler as a command.
 
@@ -98,6 +101,9 @@ def command_from_model(
         aliases: Alternative command names that invoke the same handler.
         hidden: Hide the command from command listings while keeping it callable.
         deprecated: Optional deprecation message shown in help output.
+        include_in_prompt: Whether to expose this command to the LLM via
+            ``render_llm_context()``. Defaults to True. Set False to keep
+            the command available to CLI users but invisible to the LLM.
 
     Returns:
         A ``CommandSpec`` that can be registered with
@@ -170,6 +176,7 @@ def command_from_model(
         help_text=adapter.help_text(name, description or ""),
         hidden=hidden,
         deprecated=deprecated,
+        include_in_prompt=include_in_prompt,
         injections=dict(adapter.injections),
         injection_factories=dict(adapter.injection_factories),
     )
@@ -184,6 +191,7 @@ def command_from_method(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
+    include_in_prompt: bool = True,
 ) -> CommandSpec:
     """Expose one method on a class or instance as an agenticli command.
 
@@ -209,6 +217,9 @@ def command_from_method(
         aliases: Alternative command names that invoke the same method.
         hidden: Hide the command from command listings while keeping it callable.
         deprecated: Optional deprecation message shown in help output.
+        include_in_prompt: Whether to expose this command to the LLM via
+            ``render_llm_context()``. Defaults to True. Set False to keep
+            the command available to CLI users but invisible to the LLM.
 
     Returns:
         A ``CommandSpec`` that can be registered with
@@ -270,6 +281,7 @@ def command_from_method(
         help_text=adapter.help_text(name, description or ""),
         hidden=hidden,
         deprecated=deprecated,
+        include_in_prompt=include_in_prompt,
         injections=dict(adapter.injections),
         injection_factories=dict(adapter.injection_factories),
     )

@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from importlib.util import find_spec
 from typing import Annotated, Literal
+
+import pytest
 
 from agenticli import (
     Callback,
     CliCommand,
     CommandError,
     CommandRegistry,
+    CommandSpec,
     ExecTool,
     ExecutionCallbacks,
     Injected,
@@ -1161,4 +1165,309 @@ def test_optional_pydantic_v2_support_when_installed():
     result = execute_value(registry, "psearch docs -k 7")
     assert result == {"query": "docs", "top_k": 7}
 
+
+@command(name="public", description="Public command")
+def public_cmd() -> str:
+    return "ok"
+
+
+@command(name="secret", description="Secret command", include_in_prompt=False)
+def secret_cmd() -> str:
+    return "secret"
+
+
+@command_group(name="admin", description="Admin operations", include_in_prompt=False)
+class AdminGroup:
+    @command(name="reset", description="Reset state")
+    def reset(self) -> str:
+        return "reset"
+
+    @command(name="dump", description="Dump diagnostics")
+    def dump(self) -> str:
+        return "dump"
+
+
+@command_group(name="visible", description="Visible group")
+class VisibleGroup:
+    @command(name="show", description="Show thing")
+    def show(self) -> str:
+        return "show"
+
+    @command(name="hide_me", description="Hidden sub", include_in_prompt=False)
+    def hide_me(self) -> str:
+        return "hidden"
+
+
+def test_include_in_prompt_defaults_to_true():
+    registry = CommandRegistry()
+    registry.register(public_cmd)
+
+    spec = registry.get("public")
+    assert spec.include_in_prompt is True
+    assert "public:" in registry.render_llm_context()
+
+
+def test_command_excluded_from_llm_context_when_include_in_prompt_false():
+    registry = CommandRegistry()
+    registry.register(public_cmd)
+    registry.register(secret_cmd)
+
+    context = registry.render_llm_context()
+    assert "public:" in context
+    assert "secret" not in context
+
+
+def test_command_excluded_from_prompt_still_callable_and_in_help():
+    registry = CommandRegistry()
+    registry.register(secret_cmd)
+
+    assert execute_value(registry, "secret") == "secret"
+    assert "secret" in registry.help()
+
+
+def test_command_group_excluded_from_llm_context():
+    registry = CommandRegistry()
+    registry.register(public_cmd)
+    registry.register(AdminGroup)
+
+    context = registry.render_llm_context()
+    assert "public:" in context
+    assert "admin" not in context
+
+
+def test_command_group_excluded_still_lists_in_help_and_executes():
+    registry = CommandRegistry()
+    registry.register(AdminGroup)
+
+    assert "admin" in registry.help()
+    assert execute_value(registry, "admin reset") == "reset"
+
+
+def test_subcommand_include_in_prompt_is_independent_of_group():
+    registry = CommandRegistry()
+    registry.register(VisibleGroup)
+
+    context = registry.render_llm_context()
+    assert "visible:" in context
+    assert "hide_me" not in context
+
+
+def test_command_from_model_propagates_include_in_prompt():
+    @dataclass
+    class Args:
+        value: Annotated[str, Option(positional=True)]
+
+    spec = command_from_model(
+        "mcmd",
+        Args,
+        lambda value: value,
+        description="Model command",
+        include_in_prompt=False,
+    )
+
+    assert spec.include_in_prompt is False
+
+    registry = CommandRegistry()
+    registry.register_spec(spec)
+    assert "mcmd" not in registry.render_llm_context()
+    assert "mcmd" in registry.help()
+
+
+def test_command_from_method_propagates_include_in_prompt():
+    class Service:
+        def ping(self) -> str:
+            return "pong"
+
+    spec = command_from_method(
+        "ping",
+        Service(),
+        "ping",
+        description="Ping service",
+        include_in_prompt=False,
+    )
+
+    assert spec.include_in_prompt is False
+
+    registry = CommandRegistry()
+    registry.register_spec(spec)
+    assert "ping" not in registry.render_llm_context()
+    assert execute_value(registry, "ping") == "pong"
+
+
+def test_cli_command_class_propagates_include_in_prompt():
+    class HiddenCli(CliCommand):
+        name = "hcli"
+        description = "Hidden from prompt"
+        args_model = ExecArgs
+        include_in_prompt = False
+
+        async def run(self, **kwargs):
+            return kwargs
+
+    registry = CommandRegistry()
+    registry.register(HiddenCli())
+
+    spec = registry.get("hcli")
+    assert spec.include_in_prompt is False
+    assert "hcli" not in registry.render_llm_context()
+    assert "hcli" in registry.help()
+
+
+def test_arg_spec_to_dict_is_json_safe_and_roundtrips():
+    from agenticli.types import ArgSpec
+
+    spec = ArgSpec(
+        name="count",
+        type=int,
+        default=0,
+        required=False,
+        description="iteration count",
+        short="c",
+        positional=False,
+        enum=[1, 2, 3],
+        requires=["other"],
+        excludes=[""],
+    )
+    data = spec.to_dict()
+    assert json.dumps(data)  # JSON-serializable
+    assert data["type"] == "int"
+
+    restored = ArgSpec.from_dict(data)
+    assert restored.name == spec.name
+    # `type` is preserved as the string form so the dict stays JSON-safe.
+    assert restored.type == "int"
+    assert restored.default == spec.default
+    assert restored.required == spec.required
+    assert restored.short == spec.short
+    assert restored.enum == spec.enum
+    assert restored.requires == spec.requires
+
+
+def test_command_spec_to_dict_drops_func_validator_and_factories():
+    @command(name="ping", description="Ping")
+    def ping() -> str:
+        return "pong"
+
+    registry = CommandRegistry()
+    registry.register(ping)
+    spec = registry.get("ping")
+
+    data = spec.to_dict()
+    dumped = json.dumps(data)
+    assert "func" not in data
+    assert "validator" not in data
+    assert "injection_factories" not in data
+    # only the names of factories are persisted
+    assert "injection_factory_names" in data
+    # help text and metadata preserved
+    assert data["name"] == "ping"
+    assert data["description"] == "Ping"
+    assert isinstance(data["args"], list)
+    assert json.loads(dumped) == data
+
+
+def test_command_spec_from_dict_without_resolver_is_unexecutable():
+    registry = CommandRegistry()
+    registry.register(echo_for_serial)
+    spec = registry.get("echo")
+    data = spec.to_dict()
+    restored = CommandSpec.from_dict(data)
+
+    with pytest.raises(RuntimeError, match="func_resolver"):
+        restored.func()
+
+
+def test_command_spec_roundtrip_with_func_resolver_executes():
+    registry = CommandRegistry()
+    registry.register(echo_for_serial)
+    spec = registry.get("echo")
+    data = spec.to_dict()
+
+    def resolver(name, parent):
+        assert name == "echo"
+        return registry.get("echo").func
+
+    restored = CommandSpec.from_dict(data, func_resolver=resolver)
+
+    new_registry = CommandRegistry()
+    new_registry.register_spec(restored)
+    assert execute_value(new_registry, "echo") == "echoed"
+
+
+def test_command_registry_to_dict_excludes_builtin_help():
+    registry = CommandRegistry()
+    registry.register(echo_for_serial)
+
+    data = registry.to_dict()
+    names = [entry["name"] for entry in data]
+    assert "--help" not in names
+    assert "echo" in names
+
+
+def test_command_registry_from_dict_re_registers_with_resolver():
+    registry = CommandRegistry()
+    registry.register(echo_for_serial)
+
+    def resolver(name, parent):
+        return registry.get(name).func
+
+    snapshot = registry.to_dict()
+    new_registry = CommandRegistry()
+    new_registry.from_dict(snapshot, func_resolver=resolver)
+
+    assert execute_value(new_registry, "echo") == "echoed"
+    assert new_registry.help()  # --help re-added lazily
+
+
+def test_serialization_filters_non_json_safe_injections():
+    live_handle = object()
+    spec = CommandSpec(
+        name="with_inj",
+        description="",
+        func=lambda: None,
+        injections={"ok": 1, "bad": live_handle, "list": [1, "x"]},
+    )
+
+    data = spec.to_dict()
+    assert data["injections"] == {"ok": 1, "list": [1, "x"]}
+    assert "bad" not in data["injections"]
+
+
+def test_serialization_preserves_visibility_flags():
+    registry = CommandRegistry()
+    registry.register(public_cmd)
+    registry.register(secret_cmd)
+
+    data = registry.to_dict()
+    by_name = {entry["name"]: entry for entry in data}
+    assert by_name["public"]["include_in_prompt"] is True
+    assert by_name["secret"]["include_in_prompt"] is False
+    assert by_name["secret"]["hidden"] is False
+
+
+def test_serialization_handles_group_subcommands():
+    registry = CommandRegistry()
+    registry.register(Calculator)
+
+    snapshot = registry.to_dict()
+    names = {entry["name"] for entry in snapshot}
+    assert "calc" in names
+    assert "calc add" in names
+    assert "calc mul" in names
+
+    new_registry = CommandRegistry()
+
+    def resolver(name, parent):
+        return {"calc add": lambda: None, "calc mul": lambda: None, "calc": lambda: None}[name]
+
+    new_registry.from_dict(snapshot, func_resolver=resolver)
+    assert new_registry.has("calc add")
+
+
+# --- fixtures local to serialization tests ---
+
+
+@command(name="echo", description="Echo placeholder")
+def echo_for_serial() -> str:
+    return "echoed"
 
