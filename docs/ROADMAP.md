@@ -166,7 +166,8 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.2.2**: Current stable release - `include_in_prompt` filter, `CommandSpec`/`ArgSpec`/`CommandRegistry` serialization
+- **v0.2.3**: Current stable release - Removed global command registry; commands must be registered via `CommandRegistry.register()`. `@command` decorator now also accepts the bare form (`@command` without parentheses).
+- **v0.2.2**: Previous stable release - `include_in_prompt` filter, `CommandSpec`/`ArgSpec`/`CommandRegistry` serialization
 - **v0.2.1**: Previous stable release - Instance registration support for command groups
 - **v0.2.0**: Older stable release
 - **v0.1.3**: Async execution and external tool wrapping

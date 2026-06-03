@@ -1471,3 +1471,39 @@ def test_serialization_handles_group_subcommands():
 def echo_for_serial() -> str:
     return "echoed"
 
+
+# --- bare @command usage (no parentheses) ---
+
+
+@command
+def bare_form(name: Annotated[str, Option(positional=True, description="name")]) -> str:
+    return f"bare:{name}"
+
+
+@command()
+def parens_only_form(name: Annotated[str, Option(positional=True, description="name")]) -> str:
+    return f"parens:{name}"
+
+
+def test_command_decorator_accepts_bare_form():
+    spec = bare_form.__command_spec__
+    assert spec is not None
+    assert spec.name == "bare_form"
+    assert spec.description == ""
+
+    registry = CommandRegistry()
+    registry.register(bare_form)
+    result = execute_value(registry, 'bare_form "x"')
+    assert result == "bare:x"
+
+
+def test_command_decorator_accepts_parens_only_form():
+    spec = parens_only_form.__command_spec__
+    assert spec is not None
+    assert spec.name == "parens_only_form"
+
+    registry = CommandRegistry()
+    registry.register(parens_only_form)
+    result = execute_value(registry, 'parens_only_form "x"')
+    assert result == "parens:x"
+

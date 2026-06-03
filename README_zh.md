@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -315,10 +315,8 @@ CommandRegistry.render_llm_context(detailed=False)
 CommandRegistry.commands
 
 # Decorators
-command(name=None, description="", aliases=None, hidden=False, deprecated=None)
+command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=True)
 command_group(name, description)
-get_registered_commands()
-clear_commands()
 
 # Helpers
 CliCommand

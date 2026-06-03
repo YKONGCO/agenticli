@@ -27,7 +27,6 @@ from agenticli import (
     command_from_model,
     command_from_method,
     command_group,
-    get_registered_commands,
     wrap_tool,
 )
 

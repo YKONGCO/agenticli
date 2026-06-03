@@ -313,7 +313,7 @@ class MyCommand(CliCommand):
 
 #### @command
 
-Register a function as a CLI command.
+Register a function as a CLI command. Usable bare (`@command`) or with arguments (`@command(...)`); the parentheses are optional when all parameters use their defaults.
 
 ```python
 @command(
@@ -323,6 +323,14 @@ Register a function as a CLI command.
     hidden=False,       # Hide from command list
     deprecated=None,    # Deprecation message
 )
+def my_command(arg1: str, arg2: int = 10) -> str:
+    pass
+```
+
+Bare form is equivalent to `@command()` with all defaults:
+
+```python
+@command
 def my_command(arg1: str, arg2: int = 10) -> str:
     pass
 ```

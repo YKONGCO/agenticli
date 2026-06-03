@@ -32,12 +32,10 @@ Exports:
     ParseResult: Parsed command result with arguments.
     Callback: Alias for Injected for callback injection.
     State: Alias for Injected for state injection.
-    clear_commands: Clear the global command registry.
     command: Decorator to register a function as a command.
     command_from_method: Create command from a class method.
     command_from_model: Create command from model + handler.
     command_group: Decorator for command groups with subcommands.
-    get_registered_commands: Get all registered command specs.
     Option: Per-argument CLI metadata annotation.
     wrap_tool: Wrap a schema-based tool as a command.
 """
@@ -46,7 +44,7 @@ from agenticli.builtin import ExecTool
 from agenticli.adapters import wrap_autogen_tool, wrap_langchain_tool, wrap_openai_tool_schema, wrap_tool
 from agenticli.commands import CliCommand, command_from_method, command_from_model
 from agenticli.core import CommandRegistry
-from agenticli.decorators import clear_commands, command, command_group, get_registered_commands
+from agenticli.decorators import command, command_group
 from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
 from agenticli.validation import Callback, Injected, Option, State
 
@@ -65,12 +63,10 @@ __all__ = [
     "ParseResult",
     "Callback",
     "State",
-    "clear_commands",
     "command",
     "command_from_method",
     "command_from_model",
     "command_group",
-    "get_registered_commands",
     "Option",
     "wrap_autogen_tool",
     "wrap_langchain_tool",

@@ -3,6 +3,10 @@
 This module provides decorators for registering functions and classes
 as CLI commands, supporting both standalone commands and command groups
 with subcommands.
+
+Decorators attach metadata to the wrapped target; they do not maintain
+any global registry. Pass decorated functions/classes to
+``CommandRegistry.register()`` to make them executable.
 """
 
 from __future__ import annotations
@@ -14,10 +18,9 @@ from agenticli.types import CommandSpec
 from agenticli.validation import build_adapter
 
 
-_COMMAND_REGISTRY: list[CommandSpec] = []
-
-
 def command(
+    _func: Callable[..., Any] | None = None,
+    *,
     name: str | None = None,
     description: str = "",
     aliases: list[str] | None = None,
@@ -27,10 +30,19 @@ def command(
 ):
     """Decorator to register a function as a CLI command.
 
-    Wraps a function and registers it as a command in the global registry.
+    Wraps a function and attaches a ``CommandSpec`` as
+    ``wrapper.__command_spec__``. The wrapped function is not added to
+    any global state — pass it to ``CommandRegistry.register()`` to make
+    it executable.
+
     The command's arguments are inferred from the function signature.
 
+    Usable bare (``@command``) or with arguments (``@command(...)``).
+    The parentheses are not required when all defaults are acceptable.
+
     Args:
+        _func: Internal — the decorated function when used as ``@command``.
+            Ignored when ``@command(...)`` is used.
         name: Command name, defaults to function name.
         description: Command description for help text.
         aliases: List of alternative names for the command.
@@ -42,12 +54,17 @@ def command(
             (e.g., admin-only or interactive commands).
 
     Returns:
-        Decorator function that wraps and registers the target.
+        The wrapped function, or a decorator awaiting the function,
+        depending on the call style.
 
     Example:
-        @command(description="List files")
+        @command
         def ls(path: Annotated[str, Option(description="Directory path")]) -> list[str]:
             return os.listdir(path)
+
+        @command(description="Get the weather for a city", aliases=["wx"])
+        def weather(city: Annotated[str, Option(positional=True)]) -> str:
+            ...
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -69,7 +86,6 @@ def command(
             injections=dict(adapter.injections),
             injection_factories=dict(adapter.injection_factories),
         )
-        _COMMAND_REGISTRY.append(spec)
 
         @wraps(func)
         def wrapper(*args_inner: Any, **kwargs: Any) -> Any:
@@ -78,6 +94,8 @@ def command(
         wrapper.__command_spec__ = spec
         return wrapper
 
+    if _func is not None:
+        return decorator(_func)
     return decorator
 
 
@@ -98,7 +116,7 @@ def command_group(name: str, description: str = "", *, include_in_prompt: bool =
             setting and are not affected by the group's flag.
 
     Returns:
-        Decorator function that marks and configures the class.
+        Decorator function that marks the class with ``__command_group__``.
 
     Example:
         @command_group("db", description="Database operations")
@@ -113,16 +131,6 @@ def command_group(name: str, description: str = "", *, include_in_prompt: bool =
     """
 
     def decorator(cls: type) -> type:
-        for attr_name in dir(cls):
-            if attr_name.startswith("_"):
-                continue
-            attr = getattr(cls, attr_name)
-            if callable(attr) and hasattr(attr, "__command_spec__"):
-                spec: CommandSpec = attr.__command_spec__
-                spec.parent = name
-                if spec in _COMMAND_REGISTRY:
-                    _COMMAND_REGISTRY.remove(spec)
-
         cls.__command_group__ = {
             "name": name,
             "description": description,
@@ -131,23 +139,3 @@ def command_group(name: str, description: str = "", *, include_in_prompt: bool =
         return cls
 
     return decorator
-
-
-def get_registered_commands() -> list[CommandSpec]:
-    """Get all registered command specs.
-
-    Returns:
-        List of all CommandSpec objects currently in the registry.
-
-    Note:
-        This returns a copy, modifications won't affect the internal registry.
-    """
-    return list(_COMMAND_REGISTRY)
-
-
-def clear_commands() -> None:
-    """Clear all registered commands.
-
-    Useful for testing to reset state between test cases.
-    """
-    _COMMAND_REGISTRY.clear()

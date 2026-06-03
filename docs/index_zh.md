@@ -310,7 +310,7 @@ class MyCommand(CliCommand):
 
 #### @command
 
-将函数注册为 CLI 命令。
+将函数注册为 CLI 命令。支持裸用（`@command`）或带参数（`@command(...)`）两种形式；当所有参数都使用默认值时括号可省略。
 
 ```python
 @command(
@@ -320,6 +320,14 @@ class MyCommand(CliCommand):
     hidden=False,       # 从命令列表中隐藏
     deprecated=None,    # 弃用消息
 )
+def my_command(arg1: str, arg2: int = 10) -> str:
+    pass
+```
+
+裸用等价于 `@command()` 全默认：
+
+```python
+@command
 def my_command(arg1: str, arg2: int = 10) -> str:
     pass
 ```

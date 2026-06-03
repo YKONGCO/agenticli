@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-03
+
+### Removed (breaking)
+- Module-level `_COMMAND_REGISTRY` global. Decorators no longer mutate any global state — `@command` only attaches a `CommandSpec` to the wrapped function, and `@command_group` only marks the class with `__command_group__`. Commands must be registered through `CommandRegistry.register()` to be executable.
+- Public functions `get_registered_commands()` and `clear_commands()` have been removed. The exposed API no longer implies a "default registry".
+- `command_group` no longer mutates inner `CommandSpec.parent` as a side effect of decoration; parent metadata is set by `CommandRegistry._register_command_group` when the group class is registered.
+
+### Changed
+- `@command` decorator now accepts the bare form (`@command`) in addition to `@command(...)`. The parentheses are no longer required when all parameters use their defaults. Existing keyword-argument usage is unchanged.
+
+### Migration
+- Replace any direct call to `get_registered_commands()` / `clear_commands()` with `CommandRegistry`-scoped equivalents.
+- Before:
+  ```python
+  @command
+  def foo(): ...
+  get_registered_commands()  # implicit global lookup
+  ```
+- After:
+  ```python
+  @command
+  def foo(): ...
+
+  registry = CommandRegistry()
+  registry.register(foo)
+  list(registry.commands)  # instance-scoped lookup
+  ```
+
 ## [0.2.2] - 2026-06-03
 
 ### Added
@@ -137,7 +165,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain execution with operators (`&&`, `||`, `;`)
 - Built-in `ExecTool` callback bridge for command strings
 
-[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/YKONGCO/agenticli/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/YKONGCO/agenticli/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/YKONGCO/agenticli/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/YKONGCO/agenticli/compare/v0.1.4...v0.2.0
