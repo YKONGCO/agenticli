@@ -8,7 +8,7 @@ Welcome to the agenticli documentation. This page provides an overview of the ag
 - [Core Concepts](#core-concepts)
 - [Command Definition](#command-definition)
 - [API Reference](#api-reference)
-- [0.2.0 Migration Guide](migration_0.2.md)
+- [0.2.x Migration Guide](migration_0.2.md)
 
 ---
 
@@ -187,6 +187,62 @@ from agenticli.adapters import (
 )
 ```
 
+### Auto-Discovery
+
+`CommandRegistry.discover()` walks a directory and registers every class that
+opts in via `@command_group` or by subclassing `CliCommand`. An optional
+`context_provider` callback is the natural seam for binding request-scoped
+context (user id, tenant, db connection, …) to each discovered class.
+
+```python
+from agenticli import CommandRegistry
+
+def provide_context(cls):
+    if cls is UserService:
+        return cls(user_id="alice", tenant_id="acme")
+    return cls()
+
+registry = CommandRegistry()
+result = registry.discover(
+    "example/discover_cmds",
+    context_provider=provide_context,
+    package="example.discover_cmds",
+)
+# result.registered -> newly added command names
+# result.errors     -> per-file failures (collected when on_error="ignore")
+```
+
+Two markers are recognized: classes carrying `__command_group__` (set by
+`@command_group`) and subclasses of `CliCommand`. Files whose name starts
+with `_` or `.` (covering `__init__.py` and dotfiles) and any file under a
+`__pycache__` directory are skipped. See [example/discover.py](../example/discover.py)
+for a runnable demo.
+
+### Namespace-Mode Command Groups
+
+Set `register_as_command=False` to use a `@command_group` class purely as
+a namespace: the class itself is **not** registered as a parent command,
+and the methods become flat top-level commands with `spec.parent=None`.
+
+```python
+@command_group(include_in_prompt=False)  # name omitted → namespace mode
+class ShellCommands:
+    @command
+    def ls(self, path: str = ".") -> list[str]: ...
+    # registers as a flat top-level command "ls"
+```
+
+`register_as_command` defaults to `True` when `name` is non-empty and
+`False` when `name` is empty. When the namespace group is hidden
+(`include_in_prompt=False`), the `False` propagates to every subcommand
+that did not explicitly set `include_in_prompt`; an explicit subcommand
+value always wins.
+
+> **Stateful classes**: register an **instance**, not the class, if the
+> methods rely on `self` state that must persist across calls.
+> Registering the class causes a fresh instance to be constructed on
+> every invocation, dropping stateful changes.
+
 ---
 
 ## Command Syntax
@@ -283,6 +339,7 @@ registry = CommandRegistry(
 |--------|-------------|
 | `register(target)` | Register a command from function, class, or tool |
 | `register_spec(spec)` | Register a CommandSpec directly |
+| `discover(directory, *, context_provider=None, recursive=True, package=None, on_error="ignore")` | Auto-discover and register command classes from a directory |
 | `unregister(name)` | Remove a command |
 | `get(name)` | Get CommandSpec by name |
 | `has(name)` | Check if command exists |
@@ -322,6 +379,7 @@ Register a function as a CLI command. Usable bare (`@command`) or with arguments
     aliases=None,       # List of alternative names
     hidden=False,       # Hide from command list
     deprecated=None,    # Deprecation message
+    include_in_prompt=None,  # None → inherit from @command_group namespace; True/False → explicit
 )
 def my_command(arg1: str, arg2: int = 10) -> str:
     pass
@@ -337,7 +395,10 @@ def my_command(arg1: str, arg2: int = 10) -> str:
 
 #### @command_group
 
-Mark a class as a command group.
+Mark a class as a command group. By default the group itself is also
+registered as a parent command (e.g. `db create`). Set
+`register_as_command=False` to use the class purely as a namespace
+(see [Namespace-Mode Command Groups](#namespace-mode-command-groups)).
 
 ```python
 @command_group(name="group", description="Group description")
@@ -345,6 +406,12 @@ class MyGroup:
     @command(description="Subcommand")
     def sub(self, arg: str) -> None:
         pass
+
+# Namespace mode: methods register as flat top-level commands
+@command_group(include_in_prompt=False)
+class ShellCommands:
+    @command
+    def ls(self, path: str = ".") -> list[str]: ...
 ```
 
 ### Validation Helpers

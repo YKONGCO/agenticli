@@ -1,7 +1,8 @@
-# Migration Guide: 0.1.x to 0.2.0
+# Migration Guide: 0.1.x to 0.2.x
 
 agenticli 0.2.0 simplifies `CommandRegistry` by replacing several specialized
-methods with parameterized core methods.
+methods with parameterized core methods. 0.2.3 and 0.2.4 layered additional
+changes on top of that. This page covers all of them in release order.
 
 ## CommandRegistry API Changes
 
@@ -85,3 +86,50 @@ def run_command(command: str, **kwargs):
 
 exec_tool = ExecTool(callback=run_command)
 ```
+
+## 0.1.x → 0.2.3: No More Global Registry
+
+0.2.3 removed the module-level `_COMMAND_REGISTRY` and the
+`get_registered_commands()` / `clear_commands()` helpers. `@command` and
+`@command_group` no longer mutate any global state — they only attach
+metadata to the decorated target. You must register commands through
+`CommandRegistry.register()` to make them executable.
+
+- Before:
+  ```python
+  @command
+  def foo(): ...
+
+  get_registered_commands()  # implicit global lookup
+  ```
+- After:
+  ```python
+  @command
+  def foo(): ...
+
+  registry = CommandRegistry()
+  registry.register(foo)
+  list(registry.commands)  # instance-scoped lookup
+  ```
+
+The bare form `@command` (without parentheses) is now also supported; the
+parentheses are optional when all parameters use their defaults.
+
+## 0.2.x → 0.2.4: `include_in_prompt` Sentinel + Namespace Groups
+
+0.2.4 added namespace-mode groups and changed the default of
+`include_in_prompt` on `command_from_method` / `command_from_model` from
+`True` to `None` (sentinel).
+
+- **Existing keyword callers are unaffected.** `include_in_prompt=True`
+  and `include_in_prompt=False` still work and lock the value.
+- **New behavior**: omitting `include_in_prompt` (or passing `None`)
+  lets a parent `@command_group(register_as_command=False)` namespace
+  with `include_in_prompt=False` propagate its hidden state to the
+  subcommand. An explicit subcommand value always wins.
+- `@command_group` now accepts `name: str = ""` and a new
+  `register_as_command: bool | None = None` keyword. Setting
+  `register_as_command=True` with an empty `name` raises `ValueError`.
+
+0.2.4 also added `CommandRegistry.discover()` for directory-driven
+auto-registration (purely additive).

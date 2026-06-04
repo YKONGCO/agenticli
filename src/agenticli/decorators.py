@@ -17,6 +17,15 @@ from typing import Any, Callable
 from agenticli.types import CommandSpec
 from agenticli.validation import build_adapter
 
+# Sentinel used by ``@command``'s ``include_in_prompt`` parameter to
+# distinguish "caller did not pass a value" from "caller explicitly
+# passed True". The effective value stored on the spec is always a bool
+# (True when the caller did not pass anything), so public observers
+# see no difference — only the
+# ``__command_include_in_prompt_explicit__`` marker carries the
+# distinction, consumed by ``@command_group``'s namespace mode.
+_INCLUDE_IN_PROMPT_UNSET: Any = None
+
 
 def command(
     _func: Callable[..., Any] | None = None,
@@ -26,7 +35,7 @@ def command(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
-    include_in_prompt: bool = True,
+    include_in_prompt: bool | None = None,
 ):
     """Decorator to register a function as a CLI command.
 
@@ -70,6 +79,8 @@ def command(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         cmd_name = name or func.__name__
         adapter = build_adapter(func)
+        explicit_iip = include_in_prompt is not _INCLUDE_IN_PROMPT_UNSET
+        effective_iip = True if include_in_prompt is _INCLUDE_IN_PROMPT_UNSET else bool(include_in_prompt)
         spec = CommandSpec(
             name=cmd_name,
             description=description or (func.__doc__ or "").strip(),
@@ -82,10 +93,14 @@ def command(
             help_text=adapter.help_text(cmd_name, description or (func.__doc__ or "")),
             hidden=hidden,
             deprecated=deprecated,
-            include_in_prompt=include_in_prompt,
+            include_in_prompt=effective_iip,
             injections=dict(adapter.injections),
             injection_factories=dict(adapter.injection_factories),
         )
+        # Attach the "explicit?" marker to the spec so non-@command builders
+        # (command_from_method, command_from_model) can also propagate it
+        # without re-deriving from the function object.
+        spec._include_in_prompt_explicit = explicit_iip  # type: ignore[attr-defined]
 
         @wraps(func)
         def wrapper(*args_inner: Any, **kwargs: Any) -> Any:
@@ -99,21 +114,45 @@ def command(
     return decorator
 
 
-def command_group(name: str, description: str = "", *, include_in_prompt: bool = True):
+def command_group(
+    name: str = "",
+    description: str = "",
+    *,
+    include_in_prompt: bool = True,
+    register_as_command: bool | None = None,
+):
     """Decorator for a class that contains subcommands.
 
     Marks a class as a command group, where public methods decorated with
-    @command become subcommands of the group. The group itself is registered
-    as a parent command.
+    @command become subcommands of the group. By default the group itself
+    is also registered as a parent command (e.g. ``db create``); set
+    ``register_as_command=False`` to use the class purely as a namespace
+    and have the methods register as flat top-level commands instead.
 
     Args:
-        name: Group name, used as the parent command name.
+        name: Group name, used as the parent command name when
+            ``register_as_command=True``. When non-empty, the default for
+            ``register_as_command`` is True; when empty, the default is
+            False (namespace mode).
         description: Group description for help text.
-        include_in_prompt: Whether to expose this group to the LLM via
+        include_in_prompt: Whether to expose this group (and, when used as
+            a namespace, its subcommands) to the LLM via
             ``render_llm_context()``. Defaults to True. Set False to keep
-            the group available to CLI users but invisible to the LLM
-            (e.g., admin-only operations). Subcommands retain their own
-            setting and are not affected by the group's flag.
+            them available to CLI users but invisible to the LLM
+            (e.g., admin-only operations). When
+            ``register_as_command=False`` a hidden group's ``False``
+            propagates to every subcommand that did not explicitly set
+            ``include_in_prompt``; an explicit subcommand value wins.
+        register_as_command: If True, register the group itself as a
+            parent command and prefix subcommands with ``"<name> "``. If
+            False, skip the parent registration and register the
+            subcommands as flat top-level commands using their own names,
+            with ``spec.parent`` set to ``None``. If omitted, the value
+            is inferred from ``name`` (True when ``name`` is non-empty,
+            False when it is empty).
+
+    Raises:
+        ValueError: If ``register_as_command=True`` and ``name`` is empty.
 
     Returns:
         Decorator function that marks the class with ``__command_group__``.
@@ -128,13 +167,33 @@ def command_group(name: str, description: str = "", *, include_in_prompt: bool =
             @command(description="Drop a database")
             def drop(self, name: str) -> None:
                 ...
+
+        @command_group(include_in_prompt=False)  # name omitted → namespace mode
+        class ShellCommands:
+            @command
+            def ls(self, path: str = ".") -> list[str]: ...
+            # registers as a flat top-level command "ls"
+
+    Note:
+        In namespace mode, **register an instance, not a class**, if the
+        methods rely on ``self`` state that must persist across calls.
+        Registering the class itself causes a fresh instance to be
+        constructed on every invocation, dropping stateful changes (such
+        as a shell ``cwd``). The same caveat applies to the existing
+        group mode.
     """
 
     def decorator(cls: type) -> type:
+        effective_register = bool(name) if register_as_command is None else register_as_command
+        if effective_register and not name:
+            raise ValueError(
+                "command_group requires a non-empty 'name' when register_as_command=True"
+            )
         cls.__command_group__ = {
             "name": name,
             "description": description,
             "include_in_prompt": include_in_prompt,
+            "register_as_command": effective_register,
         }
         return cls
 

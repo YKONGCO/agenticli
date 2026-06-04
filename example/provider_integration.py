@@ -260,7 +260,7 @@ async def run_openai_demo() -> None:
     model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
     
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for example/demo.py --provider openai")
+        raise RuntimeError("OPENAI_API_KEY is required for example/provider_integration.py --provider openai")
 
     registry = build_registry()
     exec_tool = ExecTool(callback=lambda command, **kwargs: _execute_value(registry, command))
@@ -308,7 +308,7 @@ async def run_anthropic_demo() -> None:
     base_url = os.environ.get("ANTHROPIC_BASE_URL")
     model = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required for example/demo.py --provider anthropic")
+        raise RuntimeError("ANTHROPIC_API_KEY is required for example/provider_integration.py --provider anthropic")
 
     registry = build_registry(with_lifecycle_logs=True)
     exec_tool = ExecTool(callback=lambda command, **kwargs: _execute_value(registry, command))

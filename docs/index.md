@@ -6,7 +6,7 @@ This directory contains the documentation for agenticli.
 
 - [index_en.md](index_en.md) - English documentation
 - [index_zh.md](index_zh.md) - Chinese documentation (中文文档)
-- [migration_0.2.md](migration_0.2.md) - Migration guide from 0.1.x to 0.2.0
+- [migration_0.2.md](migration_0.2.md) - Migration guide covering 0.1.x → 0.2.0, 0.2.3 (no global registry), and 0.2.4 (namespace groups, `include_in_prompt` sentinel)
 
 ## Quick Links
 
@@ -14,4 +14,4 @@ For English documentation, see [index_en.md](index_en.md).
 
 For Chinese documentation, see [index_zh.md](index_zh.md).
 
-For the 0.2.0 migration guide, see [migration_0.2.md](migration_0.2.md).
+For migration notes covering 0.1.x → 0.2.x, see [migration_0.2.md](migration_0.2.md).

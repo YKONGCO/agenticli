@@ -8,7 +8,7 @@
 - [核心概念](#核心概念)
 - [命令定义](#命令定义)
 - [API 参考](#api-参考)
-- [0.2.0 迁移指南](migration_0.2.md)
+- [0.2.x 迁移指南](migration_0.2.md)
 
 ---
 
@@ -187,6 +187,59 @@ from agenticli.adapters import (
 )
 ```
 
+### 自动发现
+
+`CommandRegistry.discover()` 会扫描一个目录，自动注册所有通过
+`@command_group` 标记、或继承 `CliCommand` 的类。可选的
+`context_provider` 回调是给每个发现的类绑定请求级上下文（user id、
+tenant、db 连接等）的天然接缝。
+
+```python
+from agenticli import CommandRegistry
+
+def provide_context(cls):
+    if cls is UserService:
+        return cls(user_id="alice", tenant_id="acme")
+    return cls()
+
+registry = CommandRegistry()
+result = registry.discover(
+    "example/discover_cmds",
+    context_provider=provide_context,
+    package="example.discover_cmds",
+)
+# result.registered -> 新注册的命令名
+# result.errors     -> 每个文件的失败（on_error="ignore" 时被收集）
+```
+
+识别两种标记：带有 `__command_group__` 的类（由 `@command_group`
+设置）和 `CliCommand` 的子类。文件名以 `_` 或 `.` 开头（包括
+`__init__.py` 和 dotfile）、以及 `__pycache__` 目录下的文件都会跳过。
+完整可运行示例见 [example/discover.py](../example/discover.py)。
+
+### 命名空间模式的命令组
+
+将 `register_as_command=False` 可以让 `@command_group` 类纯粹作为命名
+空间：类本身**不会**作为父命令注册，方法会变成顶层扁平命令，且
+`spec.parent=None`。
+
+```python
+@command_group(include_in_prompt=False)  # 省略 name → 命名空间模式
+class ShellCommands:
+    @command
+    def ls(self, path: str = ".") -> list[str]: ...
+    # 注册为顶层命令 "ls"
+```
+
+`register_as_command` 的默认值由 `name` 推断：`name` 非空时为
+`True`，空时为 `False`。当命名空间组设为隐藏
+（`include_in_prompt=False`）时，这个 `False` 会传播到所有未显式
+设置 `include_in_prompt` 的子命令；子命令上的显式值始终优先。
+
+> **有状态类**：如果方法依赖需要跨调用保留的 `self` 状态，请注册
+> **实例**而不是类。注册类时每次执行都会构造一个新实例，导致有状态
+> 的改动丢失。
+
 ---
 
 ## 命令语法
@@ -280,6 +333,7 @@ registry = CommandRegistry(
 |--------|-------------|
 | `register(target)` | 从函数、类或工具注册命令 |
 | `register_spec(spec)` | 直接注册 CommandSpec |
+| `discover(directory, *, context_provider=None, recursive=True, package=None, on_error="ignore")` | 从目录自动发现并注册命令类 |
 | `unregister(name)` | 移除命令 |
 | `get(name)` | 按名称获取 CommandSpec |
 | `has(name)` | 检查命令是否存在 |
@@ -319,6 +373,7 @@ class MyCommand(CliCommand):
     aliases=None,       # 别名列表
     hidden=False,       # 从命令列表中隐藏
     deprecated=None,    # 弃用消息
+    include_in_prompt=None,  # None → 继承 @command_group 命名空间；True/False → 显式
 )
 def my_command(arg1: str, arg2: int = 10) -> str:
     pass
@@ -334,7 +389,9 @@ def my_command(arg1: str, arg2: int = 10) -> str:
 
 #### @command_group
 
-将类标记为命令组。
+将类标记为命令组。默认情况下组本身也会注册为父命令（例如 `db
+create`）。将 `register_as_command=False` 可以让类纯粹作为命名空间
+（见[命名空间模式的命令组](#命名空间模式的命令组)）。
 
 ```python
 @command_group(name="group", description="组描述")
@@ -342,6 +399,12 @@ class MyGroup:
     @command(description="子命令")
     def sub(self, arg: str) -> None:
         pass
+
+# 命名空间模式：方法注册为顶层扁平命令
+@command_group(include_in_prompt=False)
+class ShellCommands:
+    @command
+    def ls(self, path: str = ".") -> list[str]: ...
 ```
 
 ### 验证辅助

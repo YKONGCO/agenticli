@@ -10,7 +10,8 @@ from __future__ import annotations
 import difflib
 import inspect
 import shlex
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any, Callable, Literal
 
 from agenticli.factory import CommandFactory
 from agenticli.matcher import CommandMatcher
@@ -91,55 +92,168 @@ class CommandRegistry:
         group_info = target.__command_group__
         group_name = group_info["name"]
         group_include_in_prompt = group_info.get("include_in_prompt", True)
+        register_as_command = group_info.get("register_as_command", True)
 
-        self._check_conflicts(
-            CommandSpec(
+        iterate_target = target if is_instance else cls
+
+        if register_as_command:
+            self._check_conflicts(
+                CommandSpec(
+                    name=group_name,
+                    description=group_info["description"],
+                    func=cls,
+                )
+            )
+
+            group_spec = CommandSpec(
                 name=group_name,
                 description=group_info["description"],
                 func=cls,
+                args=[],
+                usage=group_name,
+                source="group",
+                help_text=group_info["description"],
+                include_in_prompt=group_include_in_prompt,
             )
-        )
+            self._commands[group_name] = group_spec
 
-        group_spec = CommandSpec(
-            name=group_name,
-            description=group_info["description"],
-            func=cls,
-            args=[],
-            usage=group_name,
-            source="group",
-            help_text=group_info["description"],
-            include_in_prompt=group_include_in_prompt,
-        )
-        self._commands[group_name] = group_spec
+            for attr_name in dir(iterate_target):
+                if attr_name.startswith("_"):
+                    continue
+                attr = getattr(iterate_target, attr_name)
+                if callable(attr) and hasattr(attr, "__command_spec__"):
+                    spec: CommandSpec = attr.__command_spec__
+                    nested_name = f"{group_name} {spec.name}"
+                    if nested_name in self._commands:
+                        raise ValueError(f"command already registered: {nested_name}")
+                    nested = CommandSpec(
+                        name=nested_name,
+                        description=spec.description,
+                        func=spec.func,
+                        args=[arg for arg in spec.args if arg.name != "self"],
+                        usage=f"{group_name} {spec.usage}",
+                        aliases=list(spec.aliases),
+                        parent=group_name,
+                        validator=spec.validator,
+                        source=spec.source,
+                        help_text=spec.help_text.replace(f"Command: {spec.name}", f"Command: {group_name} {spec.name}"),
+                        hidden=spec.hidden,
+                        deprecated=spec.deprecated,
+                        injections=dict(spec.injections),
+                        injection_factories=dict(spec.injection_factories),
+                    )
+                    nested._group_class = target  # type: ignore[attr-defined]
+                    nested._method_name = attr_name  # type: ignore[attr-defined]
+                    self._commands[nested.name] = nested
+                    for alias in nested.aliases:
+                        alias_key = f"{group_name} {alias}"
+                        if alias_key in self._commands:
+                            del self._commands[nested.name]
+                            raise ValueError(f"alias already registered: {alias_key}")
+                        self._commands[alias_key] = nested
+        else:
+            for attr_name in dir(iterate_target):
+                if attr_name.startswith("_"):
+                    continue
+                attr = getattr(iterate_target, attr_name)
+                if callable(attr) and hasattr(attr, "__command_spec__"):
+                    spec: CommandSpec = attr.__command_spec__
+                    sub_iip = spec.include_in_prompt
+                    if not group_include_in_prompt:
+                        # The explicit marker is attached to the spec (set by
+                        # @command, command_from_method, or command_from_model).
+                        # Default to True when missing so the group's hidden
+                        # state never silently overrides a builder that did
+                        # not opt into the propagation contract.
+                        explicit = getattr(spec, "_include_in_prompt_explicit", True)
+                        if not explicit:
+                            sub_iip = group_include_in_prompt
+                    nested = CommandSpec(
+                        name=spec.name,
+                        description=spec.description,
+                        func=spec.func,
+                        args=[arg for arg in spec.args if arg.name != "self"],
+                        usage=spec.usage,
+                        aliases=list(spec.aliases),
+                        parent=None,
+                        validator=spec.validator,
+                        source=spec.source,
+                        help_text=spec.help_text,
+                        hidden=spec.hidden,
+                        deprecated=spec.deprecated,
+                        include_in_prompt=sub_iip,
+                        injections=dict(spec.injections),
+                        injection_factories=dict(spec.injection_factories),
+                    )
+                    # Detect conflicts *before* mutating _commands so a
+                    # colliding name or alias leaves no half-registered state.
+                    self._check_conflicts(nested)
+                    nested._group_class = target  # type: ignore[attr-defined]
+                    nested._method_name = attr_name  # type: ignore[attr-defined]
+                    self._commands[nested.name] = nested
+                    for alias in nested.aliases:
+                        if alias in self._commands:
+                            # Roll back the name insert to keep the registry
+                            # consistent on partial-failure paths.
+                            del self._commands[nested.name]
+                            raise ValueError(f"alias already registered: {alias}")
+                        self._commands[alias] = nested
 
-        # For instances, iterate on the instance to get bound methods
-        iterate_target = target if is_instance else cls
-        for attr_name in dir(iterate_target):
-            if attr_name.startswith("_"):
-                continue
-            attr = getattr(iterate_target, attr_name)
-            if callable(attr) and hasattr(attr, "__command_spec__"):
-                spec: CommandSpec = attr.__command_spec__
-                nested_name = f"{group_name} {spec.name}"
-                if nested_name in self._commands:
-                    raise ValueError(f"command already registered: {nested_name}")
-                nested = CommandSpec(
-                    name=nested_name,
-                    description=spec.description,
-                    func=spec.func,
-                    args=[arg for arg in spec.args if arg.name != "self"],
-                    usage=f"{group_name} {spec.usage}",
-                    aliases=[],
-                    parent=group_name,
-                    validator=spec.validator,
-                    source=spec.source,
-                    help_text=spec.help_text.replace(f"Command: {spec.name}", f"Command: {group_name} {spec.name}"),
-                    injections=dict(spec.injections),
-                    injection_factories=dict(spec.injection_factories),
-                )
-                nested._group_class = target  # type: ignore[attr-defined]
-                nested._method_name = attr_name  # type: ignore[attr-defined]
-                self._commands[nested.name] = nested
+    def discover(
+        self,
+        directory: str | Path,
+        *,
+        context_provider: Callable[[type], Any] | None = None,
+        recursive: bool = True,
+        package: str | None = None,
+        on_error: Literal["ignore", "raise"] = "ignore",
+    ) -> Any:
+        """Auto-discover and register command classes from a directory.
+
+        Scans ``directory`` for two kinds of opt-in markers:
+
+        * classes decorated with :func:`command_group` (i.e. carrying
+          ``__command_group__``)
+        * subclasses of :class:`agenticli.commands.CliCommand`
+
+        For each discovered class, ``context_provider`` (if given) is
+        called with the class and its return value is registered. This
+        is the natural seam for binding request-scoped context (user id,
+        tenant, db connection, …) to command group instances — see
+        ``example/context_group_instance.py`` for the manual equivalent.
+
+        Args:
+            directory: Filesystem path to scan, or a package root when
+                ``package`` is set.
+            context_provider: Optional ``(cls) -> target`` callback
+                invoked once per class. Return whatever should be
+                registered — typically a context-bound instance.
+            recursive: If True (default), descend into subdirectories.
+            package: Optional dotted package name; see
+                :mod:`agenticli.discover` for details.
+            on_error: ``"ignore"`` (default) collects failures into the
+                returned result; ``"raise"`` re-raises the first error.
+
+        Returns:
+            A :class:`agenticli.discover.DiscoverResult` with
+            ``.registered`` (newly added command names) and ``.errors``
+            (per-file failures).
+        """
+        from agenticli.discover import discover as _discover
+
+        def _register_one(target: Any) -> list[str]:
+            before = set(self.commands)
+            self.register(target)
+            return sorted(set(self.commands) - before)
+
+        return _discover(
+            directory,
+            context_provider=context_provider,
+            recursive=recursive,
+            package=package,
+            on_error=on_error,
+            register=_register_one,
+        )
 
     def register_spec(self, spec: CommandSpec) -> None:
         """Register a CommandSpec in the registry.

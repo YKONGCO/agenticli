@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import tempfile
 import time
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -1507,3 +1509,726 @@ def test_command_decorator_accepts_parens_only_form():
     result = execute_value(registry, 'parens_only_form "x"')
     assert result == "parens:x"
 
+
+# ---------------------------------------------------------------------------
+# @command_group(register_as_command=False): namespace mode
+# ---------------------------------------------------------------------------
+
+
+@command_group(
+    name="ns_admin",
+    description="Admin namespace",
+    register_as_command=False,
+    include_in_prompt=False,
+)
+class NsAdminGroup:
+    @command(name="ns_reset", description="Reset state")
+    def reset(self) -> str:
+        return "ns-reset"
+
+    @command(name="ns_dump", description="Dump diagnostics")
+    def dump(self) -> str:
+        return "ns-dump"
+
+
+@command_group(
+    name="ns_public",
+    description="Public namespace",
+    register_as_command=False,
+)
+class NsPublicGroup:
+    @command(name="ns_ping", description="Ping service")
+    def ping(self) -> str:
+        return "ns-pong"
+
+    @command(name="ns_visible_secret", description="Explicit hidden", include_in_prompt=False)
+    def secret(self) -> str:
+        return "ns-secret"
+
+
+@command_group(
+    name="ns_mixed",
+    description="Group hidden, one opt-in",
+    register_as_command=False,
+    include_in_prompt=False,
+)
+class NsMixedGroup:
+    @command(name="ns_deploy", description="Deploy (default)")
+    def deploy(self) -> str:
+        return "ns-deployed"
+
+    @command(name="ns_rollback", description="Rollback (explicit visible)", include_in_prompt=True)
+    def rollback(self) -> str:
+        return "ns-rolled-back"
+
+
+def test_namespace_group_is_not_registered_as_command():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    assert not registry.has("ns_admin")
+    assert "ns_admin" not in registry.commands
+
+
+def test_namespace_subcommands_register_as_flat_top_level():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    assert registry.has("ns_reset")
+    assert registry.has("ns_dump")
+    assert not registry.has("ns_admin ns_reset")
+
+
+def test_namespace_subcommands_are_executable_with_flat_name():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    assert execute_value(registry, "ns_reset") == "ns-reset"
+    assert execute_value(registry, "ns_dump") == "ns-dump"
+
+
+def test_namespace_subcommand_cannot_be_invoked_with_group_prefix():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    result = registry.execute("ns_admin ns_reset")
+    assert not result.ok
+    assert "unknown" in result.error.message.lower() or "ns_admin" in result.error.message
+
+
+def test_namespace_subcommand_spec_has_no_parent():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    spec = registry.get("ns_reset")
+    assert spec is not None
+    assert spec.parent is None
+    assert spec.source == "function"
+
+
+def test_namespace_help_lists_subcommands_at_top_level():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    help_text = registry.help()
+    assert "ns_reset" in help_text
+    assert "ns_dump" in help_text
+    assert "ns_admin" not in help_text.split("Subcommands:")[0]
+    assert "ns_admin:" not in help_text
+
+
+def test_namespace_include_in_prompt_propagates_to_default_subcommands():
+    registry = CommandRegistry()
+    registry.register(NsAdminGroup())
+
+    context = registry.render_llm_context()
+    assert "ns_reset" not in context
+    assert "ns_dump" not in context
+    assert "ns_admin" not in context
+
+
+def test_namespace_visible_group_lists_in_llm_context():
+    registry = CommandRegistry()
+    registry.register(NsPublicGroup())
+
+    context = registry.render_llm_context()
+    assert "ns_ping" in context
+    assert "ns_visible_secret" not in context
+
+
+def test_namespace_subcommand_explicit_include_in_prompt_overrides_group():
+    """When group is hidden, an explicit include_in_prompt=True on a subcommand wins."""
+    registry = CommandRegistry()
+    registry.register(NsMixedGroup())
+
+    context = registry.render_llm_context()
+    assert "ns_deploy" not in context
+    assert "ns_rollback" in context
+
+
+def test_namespace_subcommand_with_class_instance_uses_bound_method():
+    class Stateful:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        @command(name="ns_inc", description="Increment counter")
+        def inc(self) -> dict:
+            self.calls += 1
+            return {"calls": self.calls}
+
+    # Decorate the class itself, not a wrapper.
+    Stateful.__command_group__ = {
+        "name": "",
+        "description": "",
+        "include_in_prompt": True,
+        "register_as_command": False,
+    }
+
+    instance = Stateful()
+    registry = CommandRegistry()
+    registry.register(instance)
+
+    assert execute_value(registry, "ns_inc") == {"calls": 1}
+    # Registering the same instance reuses state on second invocation.
+    result = registry.execute("ns_inc")
+    assert result.ok
+    assert isinstance(result.value, dict)
+
+
+def test_namespace_default_register_as_command_is_true_back_compat():
+    """When register_as_command is omitted, group registers as before."""
+    @command_group(name="legacy_grp", description="Legacy")
+    class LegacyGroup:
+        @command(name="legacy_op", description="Legacy op")
+        def op(self) -> str:
+            return "legacy-ok"
+
+    registry = CommandRegistry()
+    registry.register(LegacyGroup())
+
+    assert registry.has("legacy_grp")
+    assert registry.has("legacy_grp legacy_op")
+    assert execute_value(registry, "legacy_grp legacy_op") == "legacy-ok"
+
+
+def test_namespace_subcommands_still_hidden_flag_works():
+    @command_group(name="ns_vis", register_as_command=False, include_in_prompt=True)
+    class VisGroup:
+        @command(name="ns_silent", description="Silent", hidden=True)
+        def silent(self) -> str:
+            return "shh"
+
+    registry = CommandRegistry()
+    registry.register(VisGroup())
+
+    assert "ns_silent" not in registry.help()
+    assert execute_value(registry, "ns_silent") == "shh"
+
+
+def test_namespace_group_name_is_optional():
+    @command_group(register_as_command=False, include_in_prompt=True)
+    class AnonGroup:
+        @command(name="anon_op", description="Anon op")
+        def op(self) -> str:
+            return "anon-ok"
+
+    registry = CommandRegistry()
+    registry.register(AnonGroup())
+
+    assert not registry.has("")  # name defaults to "" but never registered
+    assert registry.has("anon_op")
+    assert execute_value(registry, "anon_op") == "anon-ok"
+
+
+def test_command_group_with_register_as_command_true_requires_name():
+    with pytest.raises(ValueError, match="non-empty 'name'"):
+        @command_group(register_as_command=True)
+        class BadGroup:
+            @command
+            def op(self) -> str:
+                return "x"
+
+
+def test_empty_name_defaults_to_namespace_mode():
+    """When name is empty and register_as_command is not set, namespace mode kicks in."""
+    @command_group(include_in_prompt=False)
+    class AutoNs:
+        @command(name="auto_op", description="Auto namespace op")
+        def op(self) -> str:
+            return "auto-ok"
+
+    registry = CommandRegistry()
+    registry.register(AutoNs())
+
+    assert not registry.has("")  # group not registered
+    assert registry.has("auto_op")
+    assert "auto_op" not in registry.render_llm_context()
+
+
+def test_non_empty_name_defaults_to_group_mode():
+    """When name is provided and register_as_command is not set, group mode is the default."""
+    @command_group(name="auto_grp", description="Auto group")
+    class AutoGrp:
+        @command(name="auto_op2", description="Auto group op")
+        def op(self) -> str:
+            return "auto-grp-ok"
+
+    registry = CommandRegistry()
+    registry.register(AutoGrp())
+
+    assert registry.has("auto_grp")
+    assert registry.has("auto_grp auto_op2")
+    assert execute_value(registry, "auto_grp auto_op2") == "auto-grp-ok"
+
+
+def test_explicit_register_as_command_false_overrides_non_empty_name():
+    """Even with a name, explicit register_as_command=False → namespace mode (name ignored)."""
+    @command_group(name="ignored", register_as_command=False, include_in_prompt=True)
+    class OverrideNs:
+        @command(name="over_op", description="Override op")
+        def op(self) -> str:
+            return "over-ok"
+
+    registry = CommandRegistry()
+    registry.register(OverrideNs())
+
+    assert not registry.has("ignored")
+    assert registry.has("over_op")
+    assert execute_value(registry, "over_op") == "over-ok"
+
+
+# ---------------------------------------------------------------------------
+# Real-world usage scenarios
+# ---------------------------------------------------------------------------
+#
+# These tests exercise patterns that mirror the existing example/ scripts,
+# so regressions in those scenarios show up as test failures.
+
+
+# Scenario 1: Linux-like command set (stateful shell).
+# Mirrors example/linux_like_shell.py but uses @command on methods instead
+# of the manual command_from_method loop. State (cwd) persists across
+# invocations because the user registers an instance, not a class.
+
+
+@command_group(include_in_prompt=True)
+class LinuxLikeShell:
+    """Small read-only command set with a shared cwd."""
+
+    def __init__(self, root: str = ".") -> None:
+        from pathlib import Path
+        self.cwd = Path(root).resolve()
+
+    @command(name="pwd", description="Print working directory")
+    def pwd(self) -> dict:
+        return {"cwd": str(self.cwd)}
+
+    @command(name="ls", description="List entries at path")
+    def ls(
+        self,
+        path: Annotated[str, Option(positional=True, value_name="path")] = ".",
+    ) -> list:
+        target = self.cwd / path if path != "." else self.cwd
+        return sorted(p.name for p in target.iterdir())
+
+    @command(name="cd", description="Change directory")
+    def cd(
+        self,
+        path: Annotated[str, Option(positional=True, value_name="path")],
+    ) -> dict:
+        target = (self.cwd / path).resolve()
+        if not target.is_dir():
+            raise NotADirectoryError(path)
+        self.cwd = target
+        return {"cwd": str(self.cwd)}
+
+
+def test_linux_like_shell_state_persists_across_calls():
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sub = Path(tmp) / "sub"
+        sub.mkdir()
+        (sub / "a.txt").write_text("a")
+        (sub / "b.txt").write_text("b")
+
+        # Use a relative starting point so cd/ls paths don't have to
+        # round-trip through shlex (which would mangle Windows
+        # backslashes). This mirrors the usage in example/linux_like_shell.py.
+        cwd = Path(tmp).resolve()
+        os.chdir(cwd)  # noqa: S605 - test-only
+        try:
+            registry = CommandRegistry()
+            registry.register(LinuxLikeShell(root="."))
+
+            # cwd starts at the resolved cwd
+            assert execute_value(registry, "pwd") == {"cwd": str(cwd)}
+
+            # cd into sub, then ls shows the two files
+            cd_result = execute_value(registry, "cd sub")
+            assert cd_result["cwd"] == str(sub)
+            listing = execute_value(registry, "ls .")
+            assert sorted(listing) == ["a.txt", "b.txt"]
+        finally:
+            os.chdir(Path.cwd().anchor or "/")
+
+
+def test_linux_like_shell_subcommands_appear_at_top_level_in_help():
+    registry = CommandRegistry()
+    registry.register(LinuxLikeShell())
+    help_text = registry.help()
+    assert "pwd" in help_text
+    assert "ls" in help_text
+    assert "cd" in help_text
+    # No spurious "LinuxLikeShell" header
+    assert "LinuxLikeShell:" not in help_text
+
+
+# Scenario 2: Admin namespace, hidden from the LLM but callable.
+
+
+@command_group(include_in_prompt=False)
+class AdminCommands:
+    @command(name="admin_reset", description="Reset state (admin)", include_in_prompt=False)
+    def reset(self) -> dict:
+        return {"reset": True}
+
+    @command(name="admin_dump", description="Dump diagnostics (admin)", include_in_prompt=False)
+    def dump(self) -> dict:
+        return {"dump": True}
+
+    @command(name="admin_safe_ping", description="Safe ping (admin-visible)", include_in_prompt=True)
+    def safe_ping(self) -> str:
+        return "pong"
+
+
+def test_admin_namespace_hides_all_subcommands_from_llm_prompt_by_default():
+    registry = CommandRegistry()
+    registry.register(AdminCommands())
+
+    context = registry.render_llm_context()
+    assert "admin_reset" not in context
+    assert "admin_dump" not in context
+    # The explicitly visible subcommand still appears.
+    assert "admin_safe_ping" in context
+
+
+def test_admin_namespace_subcommands_remain_callable():
+    registry = CommandRegistry()
+    registry.register(AdminCommands())
+
+    assert execute_value(registry, "admin_reset") == {"reset": True}
+    assert execute_value(registry, "admin_dump") == {"dump": True}
+    assert execute_value(registry, "admin_safe_ping") == "pong"
+
+
+# Scenario 3: Async subcommands in a namespace.
+
+
+@command_group(include_in_prompt=True)
+class AsyncCommands:
+    @command(name="async_fetch", description="Fetch async")
+    async def fetch(self) -> dict:
+        await asyncio.sleep(0)
+        return {"fetched": True}
+
+    @command(name="async_compute", description="Compute sum", include_in_prompt=True)
+    async def compute(
+        self,
+        values: Annotated[list[int], Option(positional=True, value_name="n")],
+    ) -> dict:
+        return {"sum": sum(values)}
+
+
+def test_namespace_supports_async_subcommands():
+    registry = CommandRegistry()
+    registry.register(AsyncCommands())
+
+    assert execute_value(registry, "async_fetch") == {"fetched": True}
+    assert execute_value(registry, "async_compute 1 2 3 4") == {"sum": 10}
+
+
+def test_namespace_async_subcommands_runnable_via_execute_async():
+    registry = CommandRegistry()
+    registry.register(AsyncCommands())
+
+    result = asyncio.run(registry.execute_async("async_compute 10 20"))
+    assert result.ok
+    assert result.value == {"sum": 30}
+
+
+# Scenario 4: Subcommand with aliases.
+
+
+@command_group(include_in_prompt=True)
+class AliasedCommands:
+    @command(name="weather", description="Get weather", aliases=["wx", "w"])
+    def weather(
+        self,
+        city: Annotated[str, Option(positional=True, value_name="city")],
+    ) -> dict:
+        return {"city": city, "temp": 20}
+
+
+def test_namespace_subcommand_aliases_resolve_to_same_handler():
+    registry = CommandRegistry()
+    registry.register(AliasedCommands())
+
+    assert execute_value(registry, "weather paris") == {"city": "paris", "temp": 20}
+    assert execute_value(registry, "wx tokyo") == {"city": "tokyo", "temp": 20}
+    assert execute_value(registry, "w london") == {"city": "london", "temp": 20}
+
+
+# Scenario 5: Mix namespace groups with regular groups in the same registry.
+
+
+@command_group(include_in_prompt=True)
+class ProjectTools:
+    @command(name="proj_status", description="Show project status")
+    def status(self) -> str:
+        return "ok"
+
+
+def test_namespace_and_group_modes_coexist_in_same_registry():
+    @command_group(name="db", description="Database operations", include_in_prompt=True)
+    class DbCommands:
+        @command(name="list", description="List databases")
+        def list_dbs(self) -> list:
+            return ["main", "audit"]
+
+    registry = CommandRegistry()
+    registry.register(ProjectTools())
+    registry.register(DbCommands())
+
+    # Namespace subcommands: flat at top level
+    assert registry.has("proj_status")
+    assert execute_value(registry, "proj_status") == "ok"
+
+    # Regular group: nested invocation
+    assert registry.has("db")
+    assert registry.has("db list")
+    assert execute_value(registry, "db list") == ["main", "audit"]
+
+
+# Scenario 6: Namespace group with deeply nested options (bool flags, list
+# args, defaults, shortcuts) — verifies the full signature machinery
+# works for namespace subcommands the same way as top-level @commands.
+
+
+@command_group(include_in_prompt=True)
+class GrepLikeCommands:
+    @command(name="grep", description="Search text in files")
+    def grep(
+        self,
+        pattern: Annotated[str, Option(positional=True, value_name="pattern")],
+        paths: Annotated[list[str], Option(positional=True, value_name="file")],
+        ignore_case: Annotated[bool, Option(short="i")] = False,
+        max_results: Annotated[int, Option(short="n")] = 10,
+    ) -> dict:
+        return {
+            "pattern": pattern,
+            "files": list(paths),
+            "ignore_case": ignore_case,
+            "limit": max_results,
+        }
+
+
+def test_namespace_subcommand_signature_parsing_with_options():
+    registry = CommandRegistry()
+    registry.register(GrepLikeCommands())
+
+    result = execute_value(registry, "grep hello a.txt b.txt -i -n 5")
+    assert result == {
+        "pattern": "hello",
+        "files": ["a.txt", "b.txt"],
+        "ignore_case": True,
+        "limit": 5,
+    }
+
+
+# Scenario 7: discover() picks up namespace groups when scanning a
+# directory. This mirrors example/discover.py but with namespace
+# mode so the @command_group classes do not register a parent command.
+
+
+def test_namespace_group_round_trips_through_discover(tmp_path, monkeypatch):
+    import textwrap
+
+    pkg = tmp_path / "fake_pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "tools.py").write_text(
+        textwrap.dedent(
+            """
+            from __future__ import annotations
+            from typing import Annotated
+            from agenticli import Option, command, command_group
+
+            @command_group(include_in_prompt=False)
+            class DiscoveredTools:
+                @command(name="discovered_echo", description="Echo back")
+                def echo(self, value: Annotated[str, Option(positional=True)]) -> str:
+                    return value
+            """
+        )
+    )
+
+    import sys
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop("fake_pkg", None)
+    sys.modules.pop("fake_pkg.tools", None)
+
+    registry = CommandRegistry()
+    result = registry.discover(pkg, package="fake_pkg", on_error="raise")
+
+    assert "discovered_echo" in result.registered
+    assert registry.has("discovered_echo")
+    assert execute_value(registry, "discovered_echo hi") == "hi"
+    # The group itself is not registered.
+    assert not registry.has("DiscoveredTools")
+    # And it's hidden from the LLM context.
+    assert "discovered_echo" not in registry.render_llm_context()
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for code-reviewer findings
+# ---------------------------------------------------------------------------
+
+
+def test_namespace_explicit_include_in_prompt_via_command_from_method_is_preserved():
+    """command_from_method with explicit include_in_prompt=True inside a
+    hidden namespace group must NOT be silently overridden to False.
+
+    Regression: the old code read the explicit marker from the wrapper
+    function. Wrappers from @command set it, but command_from_method's
+    spec has no such wrapper, so the fallback to False clobbered the
+    user's explicit value.
+    """
+    class Service:
+        def cmd(self) -> str:
+            return "ok"
+
+    spec = command_from_method("cfm_visible", Service(), "cmd", include_in_prompt=True)
+    # Sanity: the spec carries the explicit value and the marker.
+    assert spec.include_in_prompt is True
+    assert getattr(spec, "_include_in_prompt_explicit", False) is True
+
+    @command_group(register_as_command=False, include_in_prompt=False)
+    class Holder:
+        pass
+
+    Holder.service = spec  # type: ignore[attr-defined]
+
+    # Apply the spec to the namespace class so the namespace branch reads it.
+    Holder.__command_group__ = {
+        "name": "",
+        "description": "",
+        "include_in_prompt": False,
+        "register_as_command": False,
+    }
+    # Replace the holder's class with a class whose only method is the spec.
+    class ToolWithSpec:
+        def cmd(self) -> str:
+            return "ok"
+    ToolWithSpec.cmd.__command_spec__ = spec  # type: ignore[attr-defined]
+    ToolWithSpec.__command_group__ = Holder.__command_group__
+
+    registry = CommandRegistry()
+    registry.register(ToolWithSpec())
+
+    # The explicit True must win over the group's False.
+    assert "cfm_visible" in registry.render_llm_context()
+    assert execute_value(registry, "cfm_visible") == "ok"
+
+
+def test_namespace_alias_collision_does_not_leave_partial_state():
+    """If a namespace subcommand's alias collides with an already-registered
+    command, the registry must not contain a half-registered entry for the
+    subcommand name (the old code inserted the name first, then raised on
+    the alias).
+    """
+    # Pre-register a command whose name collides with one of the
+    # subcommand's aliases.
+    @command(name="taken_alias", description="taken")
+    def taken() -> str:
+        return "t"
+
+    @command_group(register_as_command=False, include_in_prompt=True)
+    class CollideNs:
+        @command(name="collide_sub", description="collide sub", aliases=["taken_alias"])
+        def sub(self) -> str:
+            return "s"
+
+    registry = CommandRegistry()
+    registry.register(taken)
+
+    with pytest.raises(ValueError, match="alias already registered"):
+        registry.register(CollideNs())
+
+    # The colliding alias "taken_alias" already existed; the new
+    # subcommand "collide_sub" must not have been inserted, and the
+    # original alias still points to the original handler.
+    assert registry.has("taken_alias")
+    assert execute_value(registry, "taken_alias") == "t"
+    assert not registry.has("collide_sub")
+
+
+def test_namespace_name_collision_raises_before_partial_state():
+    """A namespace subcommand whose name collides with an existing command
+    raises before mutating _commands."""
+    @command(name="dup_name", description="existing")
+    def existing() -> str:
+        return "e"
+
+    @command_group(register_as_command=False, include_in_prompt=True)
+    class DupNs:
+        @command(name="dup_name", description="dup")
+        def op(self) -> str:
+            return "o"
+
+    registry = CommandRegistry()
+    registry.register(existing)
+
+    with pytest.raises(ValueError, match="(already registered|alias already registered)"):
+        registry.register(DupNs())
+
+    # Only the original command remains.
+    spec = registry.get("dup_name")
+    assert spec is not None
+    assert execute_value(registry, "dup_name") == "e"
+
+
+def test_group_mode_subcommand_preserves_hidden_flag():
+    """Regression: the True branch of _register_command_group used to drop
+    spec.hidden and spec.deprecated when wrapping @command methods into
+    '<group> <subcommand>' subcommands."""
+    @command_group(name="grp_hidden", description="Group with hidden sub")
+    class GrpHidden:
+        @command(name="inner", description="inner", hidden=True)
+        def inner(self) -> str:
+            return "i"
+
+    registry = CommandRegistry()
+    registry.register(GrpHidden())
+
+    spec = registry.get("grp_hidden inner")
+    assert spec is not None
+    assert spec.hidden is True
+    assert "grp_hidden inner" not in registry.help()
+
+    # And in render_llm_context the group entry shows but the hidden
+    # subcommand is filtered out (group has include_in_prompt=True).
+    context = registry.render_llm_context()
+    assert "grp_hidden:" in context
+    assert "inner" not in context  # filtered because hidden
+
+    # Same for deprecated.
+    @command_group(name="grp_dep", description="Group with deprecated sub")
+    class GrpDep:
+        @command(name="inner_dep", description="inner dep", deprecated="use foo instead")
+        def inner_dep(self) -> str:
+            return "d"
+
+    registry2 = CommandRegistry()
+    registry2.register(GrpDep())
+    spec_dep = registry2.get("grp_dep inner_dep")
+    assert spec_dep is not None
+    assert spec_dep.deprecated == "use foo instead"
+    help_text = registry2.help("grp_dep inner_dep")
+    assert "Deprecated: use foo instead" in help_text
+
+
+def test_group_mode_subcommand_preserves_aliases():
+    """The True branch also used to drop spec.aliases."""
+    @command_group(name="grp_alias", description="Group with aliased sub")
+    class GrpAlias:
+        @command(name="inner", description="inner", aliases=["in"])
+        def inner(self) -> str:
+            return "i"
+
+    registry = CommandRegistry()
+    registry.register(GrpAlias())
+
+    assert registry.has("grp_alias inner")
+    assert registry.has("grp_alias in")
+    assert execute_value(registry, "grp_alias in") == "i"

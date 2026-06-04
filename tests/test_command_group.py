@@ -1,4 +1,16 @@
-"""Tests for command group instance registration with injected context."""
+"""Tests for @command_group: instance registration, context binding, and naming.
+
+Covers:
+* Registering a ``@command_group`` class (unbound) and registering an
+  instance with bound context.
+* Conflict detection when two groups share a name, and the failure
+  mode for non-decorated instances.
+* Help text, subcommand help, and callback visibility for instances.
+* Async subcommands, ``State``/``Callback`` injection, and various
+  argument shapes inside an instance-based group.
+* Subcommand naming: the spec name is taken from ``@command(name=...)``
+  (e.g. ``media gen-image``), not the underlying function ``__name__``.
+"""
 
 from __future__ import annotations
 
@@ -312,3 +324,106 @@ def test_injection_still_works_with_instance_group():
     assert len(captured_states) == 1
     assert captured_states[0]["cmd"] == "ctx2 check"
     assert execute_value(registry, "ctx2 check")["prefix"] == "test"
+
+
+# ---------------------------------------------------------------------------
+# Subcommand naming: spec.name comes from @command(name=...), not __name__.
+# ---------------------------------------------------------------------------
+
+
+def test_command_group_subcommand_uses_hyphenated_name_from_decorator():
+    """Subcommand is registered with the @command name, not the func __name__."""
+    registry = CommandRegistry()
+    registry.register(MediaCommands)
+
+    assert registry.has("media gen-image"), "Subcommand should be registered as 'media gen-image'"
+    assert not registry.has("media gen_image"), "Subcommand should NOT be registered as 'media gen_image'"
+
+
+def test_command_group_subcommand_executes_with_hyphenated_name():
+    """Subcommand is executable using the @command name."""
+    registry = CommandRegistry()
+    registry.register(MediaCommands)
+
+    result = execute_value(registry, 'media gen-image "a beautiful sunset"')
+    assert result == "generated: a beautiful sunset"
+
+
+def test_command_group_subcommand_help_with_hyphenated_name():
+    """Subcommand help uses the @command name."""
+    registry = CommandRegistry()
+    registry.register(MediaCommands)
+
+    help_text = execute_value(registry, "media gen-image --help")
+    assert "Command: media gen-image" in help_text
+    assert "gen-image" in help_text
+
+
+def test_command_group_all_subcommands_have_hyphenated_names():
+    """All subcommands in a group use their decorator names."""
+    registry = CommandRegistry()
+    registry.register(MediaCommands)
+
+    assert registry.has("media gen-image")
+    assert registry.has("media list-images")
+    assert not registry.has("media gen_image")
+    assert not registry.has("media list_images")
+
+    assert execute_value(registry, 'media gen-image "test"') == "generated: test"
+    assert execute_value(registry, "media list-images -n 5") == ["image_0", "image_1", "image_2"]
+
+
+def test_command_group_nested_name_from_spec_name_not_func_name():
+    """The spec.name for a subcommand is the @command name, not __name__."""
+    registry = CommandRegistry()
+    registry.register(MediaCommands)
+
+    spec = registry.get("media gen-image")
+    assert spec is not None
+    assert spec.name == "media gen-image"
+
+    spec2 = registry.get("media list-images")
+    assert spec2 is not None
+    assert spec2.name == "media list-images"
+
+
+def test_mixed_underscore_and_hyphen_names_in_same_group():
+    """An explicit @command name wins; otherwise func __name__ is used."""
+
+    @command_group(name="tools", description="Tool operations")
+    class ToolCommands:
+        @command(name="create-file", description="Create a file")
+        def make_file(self, path: Annotated[str, Option(positional=True)]) -> str:
+            return f"created: {path}"
+
+        @command(description="Delete a file")
+        def delete_file(self, path: Annotated[str, Option(positional=True)]) -> str:
+            return f"deleted: {path}"
+
+    registry = CommandRegistry()
+    registry.register(ToolCommands)
+
+    assert registry.has("tools create-file")
+    assert not registry.has("tools make_file")
+    assert registry.has("tools delete_file")
+    assert not registry.has("tools delete-file")
+
+    assert execute_value(registry, 'tools create-file "/tmp/test"') == "created: /tmp/test"
+    assert execute_value(registry, 'tools delete_file "/tmp/test"') == "deleted: /tmp/test"
+
+
+@command_group(name="media", description="Media operations")
+class MediaCommands:
+    @command(name="gen-image", description="Generate an image")
+    def gen_image(
+        self,
+        prompt: Annotated[str, Option(positional=True, description="image prompt")],
+    ) -> str:
+        return f"generated: {prompt}"
+
+    @command(name="list-images", description="List images")
+    def list_images(
+        self,
+        limit: Annotated[int, Option(short="n", description="max results")] = 10,
+    ) -> list[str]:
+        return [f"image_{i}" for i in range(min(limit, 3))]

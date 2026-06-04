@@ -1,6 +1,6 @@
 # agenticli Roadmap
 
-> 📌 Last updated: 2026-06-03
+> 📌 Last updated: 2026-06-04
 
 ## Project Vision
 
@@ -61,6 +61,38 @@ registry2 = CommandRegistry()
 registry2.from_dict(snapshot, func_resolver=...) # re-bind callables
 ```
 
+### Auto-Discovery
+**Status**: Completed
+
+`CommandRegistry.discover(directory, ...)` walks a directory and registers
+every class that opts in via `@command_group` (i.e. carries
+`__command_group__`) or by subclassing `CliCommand`. An optional
+`context_provider` callback binds request-scoped context (user id,
+tenant, db connection, …) to each discovered class.
+
+```python
+result = registry.discover(
+    "example/discover_cmds",
+    context_provider=provide_context,
+    package="example.discover_cmds",
+)
+result.registered  # newly added command names
+result.errors      # per-file failures (when on_error="ignore")
+```
+
+Two opt-in markers are recognized and no new base class is introduced.
+See `example/discover.py` and `example/discover_cmds/`.
+
+### Namespace-Mode Command Groups
+**Status**: Completed
+
+`@command_group(register_as_command=False)` lets a class act as a
+namespace: the class itself is **not** registered as a parent command,
+and its methods become flat top-level commands with `spec.parent=None`.
+A hidden namespace group's `include_in_prompt=False` propagates to
+subcommands that did not explicitly set their own value; an explicit
+subcommand value always wins.
+
 ### LLM Prompt Visibility Control
 **Status**: Completed
 
@@ -68,7 +100,7 @@ registry2.from_dict(snapshot, func_resolver=...) # re-bind callables
 `@command`, `@command_group`, `CliCommand`, `command_from_model`,
 `command_from_method`) lets you keep a command callable and visible in
 `help()` while hiding its description from the LLM via
-`render_llm_context()`. See `example/prompt_filtering_demo.py`.
+`render_llm_context()`. See `example/prompt_filtering.py`.
 
 ### Backslash Line Continuation
 **Status**: Completed
@@ -134,11 +166,6 @@ observability, and model reliability.
 - [ ] Define sync and async streaming result wrappers
 - [ ] Document how streaming results should be consumed by agent runtimes
 
-### P3: Optional CLI Application Layer
-- [ ] Interactive REPL mode, if the project adds an official `agenticli` executable
-- [ ] Command history and shell completion, scoped to the optional executable
-- [ ] YAML/TOML configuration for loading local command registries
-
 ---
 
 ## 🔮 Future Considerations
@@ -166,7 +193,8 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.2.3**: Current stable release - Removed global command registry; commands must be registered via `CommandRegistry.register()`. `@command` decorator now also accepts the bare form (`@command` without parentheses).
+- **v0.2.4**: Current stable release - `CommandRegistry.discover()` for directory-driven registration, `@command_group(register_as_command=False)` namespace mode, and the `include_in_prompt` propagation contract between namespace groups and their subcommands.
+- **v0.2.3**: Previous stable release - Removed global command registry; commands must be registered via `CommandRegistry.register()`. `@command` decorator now also accepts the bare form (`@command` without parentheses).
 - **v0.2.2**: Previous stable release - `include_in_prompt` filter, `CommandSpec`/`ArgSpec`/`CommandRegistry` serialization
 - **v0.2.1**: Previous stable release - Instance registration support for command groups
 - **v0.2.0**: Older stable release

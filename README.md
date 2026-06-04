@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -298,14 +298,15 @@ CommandRegistry.has(name)
 CommandRegistry.parse(command_str, chain=False)
 CommandRegistry.execute(command_str, chain=False)
 CommandRegistry.execute_async(command_str, chain=False)
+CommandRegistry.discover(directory, *, context_provider=None, recursive=True, package=None, on_error="ignore")
 CommandRegistry.match(text, chain=False, mode="command")
 CommandRegistry.help(command=None)
 CommandRegistry.render_llm_context(detailed=False)
 CommandRegistry.commands
 
 # Decorators
-command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=True)
-command_group(name, description)
+command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=None)
+command_group(name="", description="", *, include_in_prompt=True, register_as_command=None)
 
 # Helpers
 CliCommand
@@ -325,34 +326,63 @@ Upgrading from 0.1.x? See [docs/migration_0.2.md](docs/migration_0.2.md).
 
 ## 💡 Examples
 
-See [example/demo.py](example/demo.py) for a complete calc system with OpenAI/Anthropic integration:
+See [example/provider_integration.py](example/provider_integration.py) for a complete calc system with OpenAI/Anthropic integration:
 
 ```bash
 pip install "agenticli[examples]"
-python -m example.demo --provider openai
-python -m example.demo --provider anthropic
+python -m example.provider_integration --provider openai
+python -m example.provider_integration --provider anthropic
 ```
 
 For a local Linux-like command demo (`pwd`, `cd`, `ls`, `cat`, `head`, `grep`, `wc`):
 
 ```bash
-python -m example.linux_like_demo
+python -m example.linux_like_shell
 ```
 
 Usage pattern demos:
 
 ```bash
-python -m example.decorator_demo
-python -m example.command_group_demo
-python -m example.class_command_demo
-python -m example.command_from_model_demo
-python -m example.command_from_method_demo
-python -m example.wrap_tool_demo
-python -m example.external_adapters_demo
-python -m example.simple_context_demo
-python -m example.business_context_demo
-python -m example.context_init_demo
+python -m example.decorator
+python -m example.command_group
+python -m example.cli_command
+python -m example.command_from_model
+python -m example.command_from_method
+python -m example.wrap_tool
+python -m example.external_adapters
+python -m example.discover
+python -m example.context_group_instance
+python -m example.context_state_factory
+python -m example.context_init
 ```
+
+## 🔎 Auto-Discovery
+
+`CommandRegistry.discover()` walks a directory and registers every class
+that opts in via `@command_group` or by subclassing `CliCommand`. An
+optional `context_provider` callback binds request-scoped context to
+each discovered class — useful when the same registry powers many
+tenants:
+
+```python
+from agenticli import CommandRegistry
+
+def provide_context(cls):
+    if cls is UserService:
+        return cls(user_id="alice", tenant_id="acme")
+    return cls()
+
+registry = CommandRegistry()
+result = registry.discover(
+    "example/discover_cmds",
+    context_provider=provide_context,
+    package="example.discover_cmds",
+)
+print(result.registered)   # newly added command names
+print(result.errors)       # per-file failures (when on_error="ignore")
+```
+
+See [example/discover.py](example/discover.py) for a runnable demo.
 
 ## 📚 Documentation
 

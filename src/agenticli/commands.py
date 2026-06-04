@@ -65,7 +65,7 @@ def command_from_model(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
-    include_in_prompt: bool = True,
+    include_in_prompt: bool | None = None,
 ) -> CommandSpec:
     """Expose a dataclass or Pydantic model plus a handler as a command.
 
@@ -104,6 +104,9 @@ def command_from_model(
         include_in_prompt: Whether to expose this command to the LLM via
             ``render_llm_context()``. Defaults to True. Set False to keep
             the command available to CLI users but invisible to the LLM.
+            When set explicitly (True or False) the explicit value wins
+            over a parent ``@command_group`` namespace's default; when
+            omitted, the parent's hidden state (if any) propagates.
 
     Returns:
         A ``CommandSpec`` that can be registered with
@@ -164,7 +167,7 @@ def command_from_model(
             return await result
         return result
 
-    return CommandSpec(
+    spec = CommandSpec(
         name=name,
         description=description or (handler.__doc__ or "").strip(),
         func=invoke,
@@ -176,10 +179,12 @@ def command_from_model(
         help_text=adapter.help_text(name, description or ""),
         hidden=hidden,
         deprecated=deprecated,
-        include_in_prompt=include_in_prompt,
+        include_in_prompt=True if include_in_prompt is None else bool(include_in_prompt),
         injections=dict(adapter.injections),
         injection_factories=dict(adapter.injection_factories),
     )
+    spec._include_in_prompt_explicit = include_in_prompt is not None  # type: ignore[attr-defined]
+    return spec
 
 
 def command_from_method(
@@ -191,7 +196,7 @@ def command_from_method(
     aliases: list[str] | None = None,
     hidden: bool = False,
     deprecated: str | None = None,
-    include_in_prompt: bool = True,
+    include_in_prompt: bool | None = None,
 ) -> CommandSpec:
     """Expose one method on a class or instance as an agenticli command.
 
@@ -220,6 +225,9 @@ def command_from_method(
         include_in_prompt: Whether to expose this command to the LLM via
             ``render_llm_context()``. Defaults to True. Set False to keep
             the command available to CLI users but invisible to the LLM.
+            When set explicitly (True or False) the explicit value wins
+            over a parent ``@command_group`` namespace's default; when
+            omitted, the parent's hidden state (if any) propagates.
 
     Returns:
         A ``CommandSpec`` that can be registered with
@@ -269,7 +277,7 @@ def command_from_method(
             return await result
         return result
 
-    return CommandSpec(
+    spec = CommandSpec(
         name=name,
         description=description or (method.__doc__ or "").strip(),
         func=invoke,
@@ -281,7 +289,9 @@ def command_from_method(
         help_text=adapter.help_text(name, description or ""),
         hidden=hidden,
         deprecated=deprecated,
-        include_in_prompt=include_in_prompt,
+        include_in_prompt=True if include_in_prompt is None else bool(include_in_prompt),
         injections=dict(adapter.injections),
         injection_factories=dict(adapter.injection_factories),
     )
+    spec._include_in_prompt_explicit = include_in_prompt is not None  # type: ignore[attr-defined]
+    return spec

@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -309,14 +309,15 @@ CommandRegistry.has(name)
 CommandRegistry.parse(command_str, chain=False)
 CommandRegistry.execute(command_str, chain=False)
 CommandRegistry.execute_async(command_str, chain=False)
+CommandRegistry.discover(directory, *, context_provider=None, recursive=True, package=None, on_error="ignore")
 CommandRegistry.match(text, chain=False, mode="command")
 CommandRegistry.help(command=None)
 CommandRegistry.render_llm_context(detailed=False)
 CommandRegistry.commands
 
 # Decorators
-command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=True)
-command_group(name, description)
+command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=None)
+command_group(name="", description="", *, include_in_prompt=True, register_as_command=None)
 
 # Helpers
 CliCommand
@@ -336,31 +337,59 @@ ExecTool
 
 ## 💡 示例
 
-完整的计算器与 OpenAI / Anthropic 集成示例见 [example/demo.py](example/demo.py)：
+完整的计算器与 OpenAI / Anthropic 集成示例见 [example/provider_integration.py](example/provider_integration.py)：
 
 ```bash
 pip install "agenticli[examples]"
-python -m example.demo --provider openai
-python -m example.demo --provider anthropic
+python -m example.provider_integration --provider openai
+python -m example.provider_integration --provider anthropic
 ```
 
 本地 Linux-like 命令示例（`pwd`、`cd`、`ls`、`cat`、`head`、`grep`、`wc`）见：
 
 ```bash
-python -m example.linux_like_demo
+python -m example.linux_like_shell
 ```
 
 各类使用方式的独立示例：
 
 ```bash
-python -m example.decorator_demo
-python -m example.command_group_demo
-python -m example.class_command_demo
-python -m example.command_from_model_demo
-python -m example.command_from_method_demo
-python -m example.wrap_tool_demo
-python -m example.external_adapters_demo
+python -m example.decorator
+python -m example.command_group
+python -m example.cli_command
+python -m example.command_from_model
+python -m example.command_from_method
+python -m example.wrap_tool
+python -m example.external_adapters
+python -m example.discover
 ```
+
+## 🔎 自动发现
+
+`CommandRegistry.discover()` 会扫描一个目录，自动注册所有通过
+`@command_group` 标记、或继承 `CliCommand` 的类。可选的
+`context_provider` 回调用来给每个发现的类绑定请求级上下文——同一
+注册表复用于多租户场景时尤其方便：
+
+```python
+from agenticli import CommandRegistry
+
+def provide_context(cls):
+    if cls is UserService:
+        return cls(user_id="alice", tenant_id="acme")
+    return cls()
+
+registry = CommandRegistry()
+result = registry.discover(
+    "example/discover_cmds",
+    context_provider=provide_context,
+    package="example.discover_cmds",
+)
+print(result.registered)   # 新注册的命令名
+print(result.errors)       # 每个文件的失败（on_error="ignore" 时）
+```
+
+完整可运行示例见 [example/discover.py](example/discover.py)。
 
 ## 📚 文档
 
