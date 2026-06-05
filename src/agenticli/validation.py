@@ -255,41 +255,60 @@ class ValidationAdapter:
             description: Command description.
 
         Returns:
-            Formatted help text with usage, description, and argument details.
+            Formatted help text with header, usage, and one line per argument.
         """
-        lines = [f"Command: {name}", f"Usage: {self.usage(name)}"]
-        if description:
-            lines.extend(["", description.strip()])
+        desc = (description or "").strip()
+        header = f"{name} - {desc}" if desc else name
+        lines = [header, "", "Usage:", f"  {self.usage(name)}"]
         visible_args = [arg for arg in self._ordered_args() if not arg.hidden]
         if visible_args:
-            lines.extend(["", f"Recommended order: {self.usage(name)}"])
-        if visible_args:
-            lines.extend(["", "Arguments:"])
-            examples: list[str] = []
+            lines.extend(["", "Args:"])
             for arg in visible_args:
-                req = "required" if arg.required else "optional"
-                default = ""
-                if arg.default is not None and arg.default is not inspect._empty:
-                    default = f" default={arg.default!r}"
-                enum = f" enum={arg.enum}" if arg.enum else ""
-                flag = " flag" if arg.is_flag else ""
-                short = f" short=-{arg.short}" if arg.short else ""
-                positional = " positional" if arg.positional else ""
-                example = f" example={arg.example!r}" if arg.example else ""
-                order = f" order={arg.order}" if arg.order is not None else ""
-                position = f" position={arg.position}" if arg.position is not None else ""
-                desc = arg.description or "no description"
-                label = arg.name if arg.positional else f"--{arg.name}"
-                lines.append(
-                    f"  {label}: {desc} ({req}{flag}{short}{positional}{default}{enum}{example}{order}{position})"
-                )
-                if arg.example:
-                    sample_label = arg.name if arg.positional else f"--{arg.name}"
-                    examples.append(f"  {sample_label}: {arg.example}")
-            if examples:
-                lines.extend(["", "Examples:"])
-                lines.extend(examples)
+                lines.append(f"  {self._format_arg_line(arg)}")
         return "\n".join(lines)
+
+    def _format_arg_line(self, arg: ArgSpec) -> str:
+        """Format a single argument as one line of help output.
+
+        Produces ``[SHORT,]LONG [VALUE] [MODIFIERS], description``. For
+        positional arguments the head is the value name (no leading
+        ``--``). Modifiers in order: ``flag``, ``required``, ``default:X``,
+        ``enum:[a,b,c]``, ``example:X``. The description, if present, is
+        appended after a comma.
+        """
+        if arg.positional:
+            value_name = arg.value_name or arg.name
+            head = value_name
+        else:
+            short = f"-{arg.short}," if arg.short else ""
+            head = f"{short}--{arg.name}"
+        if not arg.is_flag:
+            value_name = arg.value_name or arg.name
+            head = f"{head} {value_name}"
+
+        has_default = arg.default is not None and arg.default is not inspect._empty
+        modifiers: list[str] = []
+        if arg.is_flag:
+            modifiers.append("flag")
+        elif arg.required:
+            modifiers.append("required")
+        if arg.is_flag:
+            if has_default:
+                modifiers.append(f"default:{_format_default(arg.default)}")
+            else:
+                modifiers.append("default:false")
+        elif has_default:
+            modifiers.append(f"default:{_format_default(arg.default)}")
+        if arg.enum:
+            modifiers.append(f"enum:{arg.enum}")
+        if arg.example:
+            modifiers.append(f"example:{_format_default(arg.example)}")
+
+        desc = (arg.description or "").strip()
+        line = f"{head} {' '.join(modifiers)}" if modifiers else head
+        if desc:
+            line = f"{line}, {desc}"
+        return line
 
     def _ordered_args(self) -> list[ArgSpec]:
         """Return arguments sorted by position, order, then original index."""
@@ -710,6 +729,19 @@ def build_adapter(target: Any = None, schema: dict[str, Any] | None = None) -> V
     if inspect.isclass(target) and is_dataclass(target):
         return DataclassAdapter(target)
     raise TypeError(f"Unsupported validation target: {target!r}")
+
+
+def _format_default(value: Any) -> str:
+    """Render a default/example value for help output.
+
+    Booleans are rendered lowercase (``true``/``false``), strings are
+    rendered without surrounding quotes, and all other types use ``repr``.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    return repr(value)
 
 
 def _make_short_name(name: str, used: set[str]) -> str | None:

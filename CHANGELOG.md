@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-06-05
+
+### Changed
+- `ValidationAdapter.help_text()` rewritten to a flat, single-line-per-arg layout. The new output is `<name> - <description>` (or just `<name>`), then a `Usage:` block, then an `Args:` block where each line is `[SHORT,]LONG [VALUE] [flag|required|default:X|enum:[…]|example:X], description`. Modifiers are space-separated; the comma appears only before the description. The previous `Command:` / `Arguments:` (with parenthesised modifiers) / `Examples:` block is gone.
+- Group help (`CommandRegistry._render_group_help`) and the built-in `--help` help text now follow the same header shape (`<name> - <description>` plus a `Usage:` block) for consistency.
+- Default/example values in help are rendered without surrounding quotes for strings, and booleans are lowercase (`true` / `false`).
+- Public API of `CommandRegistry`, `CommandSpec`, `ArgSpec`, `ValidationAdapter` is unchanged. The new format is purely a presentation change in `help_text()` and the group help renderer.
+
+### Tests
+- Updated assertions in `tests/test_command_registry.py`, `tests/test_command_group.py`, `tests/test_generated_matrix.py`, and `tests/test_full_coverage.py` to match the new layout.
+
 ## [0.2.3] - 2026-06-03
 
 ### Removed (breaking)
@@ -192,7 +203,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed every file under `example/` to drop the `_demo` suffix (e.g. `decorator_demo.py` → `decorator.py`, `demo.py` → `provider_integration.py`). The list of runnable examples in `README.md` / `README_zh.md` was updated to match.
 - Updated `README.md`, `README_zh.md`, `docs/index_en.md`, `docs/index_zh.md`, and `docs/ROADMAP.md` to describe `discover()`, namespace-mode groups, and the `include_in_prompt` propagation contract.
 
-[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/YKONGCO/agenticli/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/YKONGCO/agenticli/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/YKONGCO/agenticli/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/YKONGCO/agenticli/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/YKONGCO/agenticli/compare/v0.2.1...v0.2.2

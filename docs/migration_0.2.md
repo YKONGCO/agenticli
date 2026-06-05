@@ -133,3 +133,63 @@ parentheses are optional when all parameters use their defaults.
 
 0.2.4 also added `CommandRegistry.discover()` for directory-driven
 auto-registration (purely additive).
+
+## 0.2.x → 0.2.5: Auto-Generated Help Rewrite
+
+0.2.5 is a polish release with **no API change** for callers, but the
+auto-generated `--help` text has been rewritten to a flat,
+single-line-per-arg layout. Public classes (`CommandRegistry`,
+`CommandSpec`, `ArgSpec`, `ValidationAdapter`) are unchanged.
+
+### Old format
+
+```
+Command: files ls
+Usage: ls --path <path> [--verbose] [--ext <ext>]
+
+List directory contents
+
+Arguments:
+  --path: Directory path (required short=-p example='/tmp')
+  --verbose: Also list hidden entries (optional flag short=-v default=False)
+  --ext: Filter by extension (optional short=-e default='' example='.log')
+
+Examples:
+  --path: /tmp
+  --ext: .log
+```
+
+### New format
+
+```
+files ls - List directory contents
+
+Usage:
+  ls --path <PATH> [--verbose] [--ext <EXT>]
+
+Args:
+  -p,--path PATH required example:/tmp, Directory path
+  -v,--verbose flag default:false, Also list hidden entries
+  -e,--ext EXT default: example:.log, Filter by extension
+```
+
+Key changes:
+
+- Header becomes `<name> - <description>` (or just `<name>` without
+  description). For nested subcommands the name is the fully qualified
+  path.
+- The `Command:` label and the redundant `Recommended order:` line are
+  removed. `Usage:` is on its own line, with the usage string below it.
+- `Arguments:` is renamed to `Args:` and rewritten to a flat
+  `[SHORT,]LONG [VALUE] [MODIFIERS], description` shape. Modifiers
+  (`flag`, `required`, `default:X`, `enum:[…]`, `example:X`) are
+  space-separated; the comma appears only before the description.
+- The standalone `Examples:` block is gone — `example=…` now appears
+  inline as `example:X` on the same line as the argument.
+- String defaults/examples are rendered without surrounding quotes, and
+  booleans use lowercase (`true` / `false`).
+
+If you were asserting on the old `Arguments:` / `(required short=…)`
+shape in your own tests, update them to the new format. See
+[Help Syntax](index_en.md#help-syntax) for the full rendered shape
+after the change.

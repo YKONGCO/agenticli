@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.5-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -295,6 +295,46 @@ assert result.error.code == "parse_error"
 registry.execute("missing && weather Beijing", chain=True)
 # ["Error: Unknown command"]
 ```
+
+## 📖 自动生成的帮助内容
+
+`<name> --help` 与 `registry.help(name)` 由每个命令的
+`ValidationAdapter.help_text()` 渲染。假设：
+
+```python
+@command_group(name="files", description="文件与文本操作")
+class Files:
+    @command(name="ls", description="列出目录内容")
+    def ls(
+        self,
+        path: Annotated[str, Option(short="p", description="目录路径", value_name="PATH", example="/tmp")],
+        verbose: Annotated[bool, Option(short="v", description="同时列出隐藏条目")] = False,
+        ext: Annotated[str, Option(short="e", description="按扩展名过滤", value_name="EXT", example=".log")] = "",
+    ) -> list[str]: ...
+```
+
+`files ls --help` 渲染为：
+
+```
+files ls - 列出目录内容
+
+Usage:
+  ls --path <PATH> [--verbose] [--ext <EXT>]
+
+Args:
+  -p,--path PATH required example:/tmp, 目录路径
+  -v,--verbose flag default:false, 同时列出隐藏条目
+  -e,--ext EXT default: example:.log, 按扩展名过滤
+```
+
+命令组帮助只列出子命令。`registry.render_llm_context()` 输出的 LLM
+prompt 刻意保持极简，**不会**嵌入完整帮助——它会提示模型在需要时
+调用 `<command> --help`。
+
+> **0.2.5**：自动生成的帮助改为扁平、每行一个参数的格式——
+> `标题` / `Usage` / `Args`。每行参数上的修饰符用空格分隔
+> （`flag`、`required`、`default:X`、`enum:[…]`、`example:X`），
+> 末尾的 `, 描述`（带逗号）只在有描述时追加。
 
 ## 📦 稳定 API
 

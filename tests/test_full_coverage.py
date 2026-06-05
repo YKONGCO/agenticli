@@ -1026,9 +1026,8 @@ def test_signature_adapter_help_text_includes_description():
 
     adapter = build_adapter(cmd)
     text = adapter.help_text("cmd", "the command")
-    assert "Command: cmd" in text
-    assert "Usage: cmd" in text
-    assert "the command" in text
+    assert "cmd - the command" in text
+    assert "Usage:\n  cmd" in text
     assert "the file" in text
 
 
@@ -1068,7 +1067,7 @@ def test_pydantic_adapter_help_text():
 
     adapter = build_adapter(M)
     text = adapter.help_text("m", "desc")
-    assert "Command: m" in text
+    assert "m - desc" in text
     assert "desc" in text
 
 
@@ -1968,7 +1967,7 @@ def test_execute_help_short_circuit():
     registry.register(x)
     r = registry.execute("--help x")
     assert r.ok is True
-    assert "Command: x" in r.value
+    assert "x\n\nUsage:" in r.value
 
 
 def test_execute_async_returns_same_value():
@@ -2086,7 +2085,7 @@ def test_help_for_specific_command_includes_aliases():
     registry = CommandRegistry()
     registry.register(kx)
     out = registry.help("kx")
-    assert "Command: kx" in out
+    assert "kx - kx" in out
     assert "Aliases:" in out
     assert "k" in out
 
@@ -2105,7 +2104,7 @@ def test_help_for_prefix_match():
     registry = CommandRegistry()
     registry.register(w)
     out = registry.help("weath")
-    assert "Command: weather" in out
+    assert "weather\n\nUsage:" in out
 
 
 def test_help_for_deprecated_shows_notice():

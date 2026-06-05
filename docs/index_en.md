@@ -553,3 +553,104 @@ Alternative:
 --help
 --help calc
 ```
+
+### Auto-Generated Help Output
+
+`registry.help(name)` (or `<name> --help`) renders help from each
+registered command's `ValidationAdapter.help_text()`. The layout is:
+
+1. **Header line** — `<name> - <description>`, or just `<name>` when
+   there is no description. For nested subcommands the name is the
+   fully qualified path (e.g. `files ls`).
+2. **Usage** block — `Usage:` on its own line, then the usage string.
+   `[]` marks optional, no bracket means required, flags appear without
+   a value placeholder.
+3. **Args** block — one line per visible argument. Format is
+   `[SHORT,]LONG [VALUE] [MODIFIERS], description`:
+   - `SHORT,` is shown when the option has a short flag.
+   - `VALUE` is the option's value name (or arg name fallback); omitted
+     for boolean flags.
+   - `MODIFIERS`, space-separated, in this order:
+     - `flag` — boolean flag
+     - `required` — non-flag argument with no default
+     - `default:X` — boolean flags show `default:false` when unset
+     - `enum:[a,b,c]` — when the arg is constrained to a Literal/enum
+     - `example:X` — for any `example=…` provided to `Option`
+   - `, description` is appended (with comma) only when a description
+     exists.
+
+Group help lists subcommands instead of arguments and points the user
+at `<subcommand> --help` for details.
+
+#### Group help
+
+Given:
+
+```python
+from typing import Annotated
+from agenticli import CommandRegistry, command, command_group, Option
+
+@command_group(name="files", description="File and text operations")
+class Files:
+    @command(name="ls", description="List directory contents")
+    def ls(
+        self,
+        path: Annotated[str, Option(short="p", description="Directory path", value_name="PATH", example="/tmp")],
+        verbose: Annotated[bool, Option(short="v", description="Also list hidden entries")] = False,
+        ext: Annotated[str, Option(short="e", description="Filter by extension", value_name="EXT", example=".log")] = "",
+    ) -> list[str]: ...
+
+registry = CommandRegistry()
+registry.register(Files)
+```
+
+`files --help` renders:
+
+```
+files - File and text operations
+
+Usage:
+  files <subcommand> [args...]
+
+Subcommands:
+  ls: List directory contents
+
+Use files <subcommand> --help for detailed help.
+```
+
+#### Subcommand help
+
+`files ls --help` renders:
+
+```
+files ls - List directory contents
+
+Usage:
+  ls --path <PATH> [--verbose] [--ext <EXT>]
+
+Args:
+  -p,--path PATH required example:/tmp, Directory path
+  -v,--verbose flag default:false, Also list hidden entries
+  -e,--ext EXT default: example:.log, Filter by extension
+```
+
+#### LLM prompt
+
+`registry.render_llm_context()` is a separate, intentionally minimal
+output for the LLM. It does **not** embed the full `--help` text — that
+is what `<command> --help` is for. Example:
+
+```
+You can use the following CLI commands:
+  files: File and text operations
+
+Use <command> --help when you need full argument details.
+Output a command string directly, for example: exec --command 'ls -la'
+```
+
+> **0.2.5 change**: the auto-generated help has been rewritten to a
+> flat, single-line-per-arg layout. The earlier `Command:` /
+> `Recommended order:` / `Arguments:` / `Examples:` blocks are gone.
+> `ValidationAdapter.help_text()` now produces a `Header / Usage / Args`
+> shape, the `--help` builtin and group help follow the same shape, and
+> the per-arg line is the one shown above.

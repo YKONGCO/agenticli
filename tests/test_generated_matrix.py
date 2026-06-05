@@ -98,12 +98,12 @@ def _coerce_cases() -> list[tuple[str, tuple[int, float, bool]]]:
 
 def _help_cases() -> list[tuple[str, str]]:
     return [
-        ("calc --help", "Usage: calc <subcommand> [args...]"),
-        ("calc add --help", "Command: calc add"),
-        ("calc add -h", "Command: calc add"),
-        ("toggle --help", "Usage: toggle --enabled"),
-        ("toggle -h", "Usage: toggle --enabled"),
-        ("--help toggle", "Usage: toggle --enabled"),
+        ("calc --help", "Usage:\n  calc <subcommand> [args...]"),
+        ("calc add --help", "calc add - Add two integers"),
+        ("calc add -h", "calc add - Add two integers"),
+        ("toggle --help", "Usage:\n  toggle --enabled"),
+        ("toggle -h", "Usage:\n  toggle --enabled"),
+        ("--help toggle", "Usage:\n  toggle --enabled"),
     ]
 
 
@@ -219,9 +219,8 @@ def test_schema_tool_metadata_is_exposed_and_hidden_fields_stay_hidden():
 
     help_text = execute_value(registry, "schema-calc --help")
     assert "Usage: schema-calc value" not in help_text
-    assert "Usage: schema-calc --value <number>" in help_text
-    assert "example='42.5'" in help_text
-    assert "order=1" in help_text
+    assert "Usage:\n  schema-calc --value <number>" in help_text
+    assert "example:42.5" in help_text
     assert "--mode" not in help_text
 
     result = execute_value(registry, "schema-calc --value 42.5 --flags a --flags b --pair 1 2 --mode safe")

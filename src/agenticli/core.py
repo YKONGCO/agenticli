@@ -20,6 +20,25 @@ from agenticli.runtime import run_sync
 from agenticli.types import ArgSpec, CommandError, CommandSpec, ExecutionCallbacks, ExecutionContext, ExecutionResult, HitResult, ParseResult
 
 
+def _prefix_help_text_name(help_text: str, old_name: str, new_name: str) -> str:
+    """Rewrite the first-line command name in an auto-generated help block.
+
+    Help text starts with ``<name> - <description>`` (or just ``<name>`` when
+    there is no description). When a method is registered under a group, the
+    first line must be updated to use the fully qualified name without
+    disturbing the rest of the help block.
+    """
+    if not help_text:
+        return help_text
+    first, sep, rest = help_text.partition("\n")
+    prefix = f"{old_name} - "
+    if first == old_name:
+        return f"{new_name}{sep}{rest}"
+    if first.startswith(prefix):
+        return f"{new_name} - {first[len(prefix):]}{sep}{rest}"
+    return help_text
+
+
 class CommandRegistry:
     """Registry for CLI commands with parsing and execution capabilities.
 
@@ -136,7 +155,7 @@ class CommandRegistry:
                         parent=group_name,
                         validator=spec.validator,
                         source=spec.source,
-                        help_text=spec.help_text.replace(f"Command: {spec.name}", f"Command: {group_name} {spec.name}"),
+                        help_text=_prefix_help_text_name(spec.help_text, spec.name, nested_name),
                         hidden=spec.hidden,
                         deprecated=spec.deprecated,
                         injections=dict(spec.injections),
@@ -379,7 +398,7 @@ class CommandRegistry:
             args=[ArgSpec(name="command", type=str, required=False, description="Command to describe")],
             usage="--help [command]",
             source="builtin",
-            help_text="Command: --help\nUsage: --help [command]",
+            help_text="--help\n\nUsage:\n  --help [command]\n\nArgs:\n  command: optional, command to describe",
         )
         self._commands["--help"] = help_spec
         self._help_added = True
@@ -892,7 +911,7 @@ class CommandRegistry:
                 return f"Unknown command: {command}"
             if spec.source == "group":
                 return self._render_group_help(spec)
-            help_text = spec.help_text or f"Command: {spec.name}\nUsage: {spec.usage}"
+            help_text = spec.help_text or f"{spec.name}\n\nUsage:\n  {spec.usage}"
             if spec.deprecated:
                 help_text = f"Deprecated: {spec.deprecated}\n\n{help_text}"
             if spec.aliases:
@@ -921,9 +940,9 @@ class CommandRegistry:
         Returns:
             Formatted help text for group and its subcommands.
         """
-        lines = [f"Command: {spec.name}", f"Usage: {spec.name} <subcommand> [args...]"]
-        if spec.description:
-            lines.extend(["", spec.description.strip()])
+        desc = spec.description.strip() if spec.description else ""
+        header = f"{spec.name} - {desc}" if desc else spec.name
+        lines = [header, "", "Usage:", f"  {spec.name} <subcommand> [args...]"]
 
         subcommands: list[CommandSpec] = []
         seen: set[str] = set()

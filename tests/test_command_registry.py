@@ -277,10 +277,9 @@ def test_help_prefers_command_local_form_and_shows_short_aliases():
     registry.register(weather)
 
     help_text = execute_value(registry, "weather --help")
-    assert "Usage: weather <city>" in help_text
-    assert "short=-u" in help_text
-    assert "short=-v" in help_text
-    assert "positional" in help_text
+    assert "Usage:\n  weather <city> [--unit <unit>] [--verbose]" in help_text
+    assert "-u,--unit unit" in help_text
+    assert "-v,--verbose flag" in help_text
     assert "Aliases:" in help_text
 
 
@@ -295,10 +294,8 @@ def test_help_shows_example_and_custom_value_name():
     registry.register(fetch)
 
     help_text = execute_value(registry, "fetch --help")
-    assert "Usage: fetch <query>" in help_text
-    assert "example='OpenAI latest'" in help_text
-    assert "Examples:" in help_text
-    assert "Recommended order: fetch <query>" in help_text
+    assert "Usage:\n  fetch <query>" in help_text
+    assert "example:OpenAI latest" in help_text
 
 
 def test_parameter_order_and_position_control_usage_and_parsing():
@@ -315,9 +312,7 @@ def test_parameter_order_and_position_control_usage_and_parsing():
     registry.register(ordered)
 
     help_text = execute_value(registry, "ordered --help")
-    assert "Usage: ordered <first> <second> [--head <head>] [--tail <tail>]" in help_text
-    assert "order=1" in help_text
-    assert "position=0" in help_text
+    assert "Usage:\n  ordered <first> <second> [--head <head>] [--tail <tail>]" in help_text
     assert execute_value(registry, "ordered a b -h H -t T") == ("a", "b", "H", "T")
 
 
@@ -424,7 +419,7 @@ def test_help_still_supports_global_form():
     registry = CommandRegistry()
     registry.register(weather)
 
-    assert "Usage: weather <city>" in execute_value(registry, "--help weather")
+    assert "Usage:\n  weather <city> [--unit <unit>] [--verbose]" in execute_value(registry, "--help weather")
 
 
 def test_help_for_subcommand_works():
@@ -432,7 +427,7 @@ def test_help_for_subcommand_works():
     registry.register(Calculator)
 
     help_text = execute_value(registry, "calc add --help")
-    assert "Command: calc add" in help_text
+    assert "calc add - Add two numbers" in help_text
 
 
 def test_group_help_lists_subcommands():
@@ -440,7 +435,7 @@ def test_group_help_lists_subcommands():
     registry.register(Calculator)
 
     help_text = execute_value(registry, "calc --help")
-    assert "Usage: calc <subcommand> [args...]" in help_text
+    assert "Usage:\n  calc <subcommand> [args...]" in help_text
     assert "Subcommands:" in help_text
     assert "add:" in help_text
     assert "mul:" in help_text
@@ -451,7 +446,7 @@ def test_group_without_subcommand_returns_group_help():
     registry.register(Calculator)
 
     help_text = execute_value(registry, "calc")
-    assert "Usage: calc <subcommand> [args...]" in help_text
+    assert "Usage:\n  calc <subcommand> [args...]" in help_text
     assert "Subcommands:" in help_text
 
 

@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/badge/pypi-agenticli-blue.svg)](https://pypi.org/project/agenticli/)
-[![Version](https://img.shields.io/badge/version-0.2.4-blue.svg)](https://pypi.org/project/agenticli/#history)
+[![Version](https://img.shields.io/badge/version-0.2.5-blue.svg)](https://pypi.org/project/agenticli/#history)
 [![GitHub](https://img.shields.io/badge/github-YKONGCO/agenticli-blue.svg)](https://github.com/YKONGCO/agenticli)
 
 </div>
@@ -284,6 +284,47 @@ assert result.error.code == "parse_error"
 registry.execute("missing && weather Beijing", chain=True)
 # ["Error: Unknown command"]
 ```
+
+## 📖 Auto-Generated Help
+
+`<name> --help` and `registry.help(name)` render help from each command's
+`ValidationAdapter.help_text()`. Given:
+
+```python
+@command_group(name="files", description="File and text operations")
+class Files:
+    @command(name="ls", description="List directory contents")
+    def ls(
+        self,
+        path: Annotated[str, Option(short="p", description="Directory path", value_name="PATH", example="/tmp")],
+        verbose: Annotated[bool, Option(short="v", description="Also list hidden entries")] = False,
+        ext: Annotated[str, Option(short="e", description="Filter by extension", value_name="EXT", example=".log")] = "",
+    ) -> list[str]: ...
+```
+
+`files ls --help` renders:
+
+```
+files ls - List directory contents
+
+Usage:
+  ls --path <PATH> [--verbose] [--ext <EXT>]
+
+Args:
+  -p,--path PATH required example:/tmp, Directory path
+  -v,--verbose flag default:false, Also list hidden entries
+  -e,--ext EXT default: example:.log, Filter by extension
+```
+
+Group help lists subcommands instead of arguments. The LLM-facing prompt
+from `registry.render_llm_context()` is intentionally minimal and does
+**not** embed the full help — it tells the model to use
+`<command> --help` when it needs more.
+
+> **0.2.5**: the auto-generated help is now a flat, single-line-per-arg
+> layout — `Header` / `Usage` / `Args`. Modifiers on each arg are
+> space-separated (`flag`, `required`, `default:X`, `enum:[…]`,
+> `example:X`) with `, description` appended at the end.
 
 ## 📦 Stable API
 

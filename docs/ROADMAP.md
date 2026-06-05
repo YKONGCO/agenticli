@@ -193,7 +193,8 @@ These are speculative and depend on user feedback:
 
 See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
 
-- **v0.2.4**: Current stable release - `CommandRegistry.discover()` for directory-driven registration, `@command_group(register_as_command=False)` namespace mode, and the `include_in_prompt` propagation contract between namespace groups and their subcommands.
+- **v0.2.5**: Current stable release - `ValidationAdapter.help_text()` rewritten to a flat `Header / Usage / Args` layout with one line per argument. Group help and the `--help` builtin follow the same shape. Default/example values render without quotes for strings and lowercase for booleans. No public API change.
+- **v0.2.4**: Previous stable release - `CommandRegistry.discover()` for directory-driven registration, `@command_group(register_as_command=False)` namespace mode, and the `include_in_prompt` propagation contract between namespace groups and their subcommands.
 - **v0.2.3**: Previous stable release - Removed global command registry; commands must be registered via `CommandRegistry.register()`. `@command` decorator now also accepts the bare form (`@command` without parentheses).
 - **v0.2.2**: Previous stable release - `include_in_prompt` filter, `CommandSpec`/`ArgSpec`/`CommandRegistry` serialization
 - **v0.2.1**: Previous stable release - Instance registration support for command groups

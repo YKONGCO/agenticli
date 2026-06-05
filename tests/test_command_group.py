@@ -122,7 +122,7 @@ def test_instance_subcommand_help():
     registry.register(service)
 
     help_text = execute_value(registry, "user info --help")
-    assert "Command: user info" in help_text
+    assert "user info - Show info" in help_text
 
 
 def test_instance_callback_receives_correct_context():
@@ -355,7 +355,7 @@ def test_command_group_subcommand_help_with_hyphenated_name():
     registry.register(MediaCommands)
 
     help_text = execute_value(registry, "media gen-image --help")
-    assert "Command: media gen-image" in help_text
+    assert "media gen-image" in help_text
     assert "gen-image" in help_text
 
 

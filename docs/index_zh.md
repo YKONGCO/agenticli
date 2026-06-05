@@ -546,3 +546,100 @@ calc add --help
 --help
 --help calc
 ```
+
+### 自动生成的帮助内容
+
+`registry.help(name)`（或 `<name> --help`）由每个命令的
+`ValidationAdapter.help_text()` 渲染。整体结构如下：
+
+1. **标题行** — `<name> - <description>`，若无描述则只有 `<name>`。
+   嵌套子命令会使用完整路径（例如 `files ls`）。
+2. **Usage** 块 — `Usage:` 独占一行，下面是 usage 字符串。`[]` 表示
+   可选；无括号表示必填；flag 不带值占位符。
+3. **Args** 块 — 每个可见参数一行，格式为
+   `[SHORT,]LONG [VALUE] [修饰符], 描述`：
+   - `SHORT,` 仅当该选项有短标志时出现。
+   - `VALUE` 是选项的 value name（缺省时回退到参数名），布尔 flag
+     省略。
+   - `修饰符` 用空格分隔，按顺序为：
+     - `flag` — 布尔 flag
+     - `required` — 非 flag 且没有默认值
+     - `default:X` — flag 未显式设置时显示 `default:false`
+     - `enum:[a,b,c]` — 受 Literal/枚举约束时
+     - `example:X` — `Option` 上声明了 `example=…`
+   - `, 描述` 仅在有描述时追加（带逗号）。
+
+命令组的帮助只列出子命令，并提示用户用 `<subcommand> --help` 查看
+详情。
+
+#### 命令组帮助
+
+假设：
+
+```python
+from typing import Annotated
+from agenticli import CommandRegistry, command, command_group, Option
+
+@command_group(name="files", description="文件与文本操作")
+class Files:
+    @command(name="ls", description="列出目录内容")
+    def ls(
+        self,
+        path: Annotated[str, Option(short="p", description="目录路径", value_name="PATH", example="/tmp")],
+        verbose: Annotated[bool, Option(short="v", description="同时列出隐藏条目")] = False,
+        ext: Annotated[str, Option(short="e", description="按扩展名过滤", value_name="EXT", example=".log")] = "",
+    ) -> list[str]: ...
+
+registry = CommandRegistry()
+registry.register(Files)
+```
+
+`files --help` 渲染为：
+
+```
+files - 文件与文本操作
+
+Usage:
+  files <subcommand> [args...]
+
+Subcommands:
+  ls: 列出目录内容
+
+Use files <subcommand> --help for detailed help.
+```
+
+#### 子命令帮助
+
+`files ls --help` 渲染为：
+
+```
+files ls - 列出目录内容
+
+Usage:
+  ls --path <PATH> [--verbose] [--ext <EXT>]
+
+Args:
+  -p,--path PATH required example:/tmp, 目录路径
+  -v,--verbose flag default:false, 同时列出隐藏条目
+  -e,--ext EXT default: example:.log, 按扩展名过滤
+```
+
+#### LLM prompt
+
+`registry.render_llm_context()` 是另一份刻意保持极简、专门给 LLM
+看的输出。它**不会**把完整 `--help` 嵌进去——那是 `<command> --help`
+的职责。示例：
+
+```
+You can use the following CLI commands:
+  files: 文件与文本操作
+
+Use <command> --help when you need full argument details.
+Output a command string directly, for example: exec --command 'ls -la'
+```
+
+> **0.2.5 变更**：自动生成的帮助被重写为扁平、每行一个参数的格式。
+> 原来的 `Command:` / `Recommended order:` / `Arguments:` /
+> `Examples:` 块已移除。`ValidationAdapter.help_text()` 现在产生
+> `标题 / Usage / Args` 三段式，`--help` 内建和命令组帮助也保持一致，
+> 每行参数的格式如上所示。
