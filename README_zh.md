@@ -31,6 +31,23 @@
 | 你希望模型先看到极简提示，需要时再通过 `--help` 展开 | ✅ |
 | 你想把校验、帮助、错误提示和生命周期钩子统一到一处 | ✅ |
 
+## 📊 效果:token 两端都省
+
+用 `cl100k_base` 在 15 个工具的 catalog + 一次 3 参数的 `read_file` 调用上测得:
+
+|                       | 定义(系统提示) | 调用(模型输出) |
+|-----------------------|---------------:|---------------:|
+| OpenAI `tools=[]`     | 1,543 tokens   | 34 tokens      |
+| `render_llm_context`  |    86 tokens   | 18 tokens      |
+| **节省**              | **94.4%**(1,457)| **47.1%**(16) |
+
+参数名、类型、约束模型照样能看到——只是从“每轮都贴 prompt”变成“调用时
+再 `<cmd> --help`”。复现:
+
+```bash
+uv run --with tiktoken python scripts/token_benchmark.py
+```
+
 ## 🚀 快速开始
 
 ```bash

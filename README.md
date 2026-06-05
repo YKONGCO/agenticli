@@ -16,26 +16,28 @@
 
 ---
 
-## ✨ What is this?
+**agenticli** turns functions, classes, and schema-based tools into a stable
+CLI semantic layer. Instead of flooding prompts with full JSON Schemas, the
+LLM sees a one-line list of commands and outputs a single command string.
 
-**agenticli** converts functions, classes, and schema-based tools into a stable CLI semantic layer. Instead of flooding prompts with large schemas, LLMs just output a single command string.
+## 📊 Effect: fewer tokens, in both directions
 
-> 💡 **Philosophy: bash is everything.** The command string is the most stable, restrained, and observable intermediate representation between LLMs and tool systems.
+Measured with `cl100k_base` on a 15-tool catalog and a 3-arg `read_file` call:
 
-## 🎯 When to use agenticli?
+|                       | Definition (system prompt) | Call (model output) |
+|-----------------------|---------------------------:|--------------------:|
+| OpenAI `tools=[]`     | 1,543 tokens               | 34 tokens           |
+| `render_llm_context`  |    86 tokens               | 18 tokens           |
+| **Saved**             | **94.4%** (1,457 tokens)   | **47.1%** (16 tokens) |
 
-| Scenario | agenticli helps? |
-|----------|---------------|
-| You have many tools/functions and need a unified interface for LLMs | ✅ |
-| You don't want massive schemas injected into prompts | ✅ |
-| You want models to see minimal hints, expanding via `--help` | ✅ |
-| You want validation, help, errors, and lifecycle in one place | ✅ |
-
-## 🚀 Quick Start
+Argument names, types, and constraints are still available — pulled from
+`<cmd> --help` at call time, not stuffed into every system prompt.
 
 ```bash
 pip install agenticli
 ```
+
+## 🚀 Quick Start
 
 ```python
 from typing import Annotated
@@ -45,130 +47,26 @@ from agenticli import CommandRegistry, Option, command, command_group
 class Calc:
     @command(name="add", description="Add numbers")
     def add(self,
-        values: Annotated[list[float], Option(positional=True, value_name="n")]
+        values: Annotated[list[float], Option(positional=True, value_name="n")],
     ) -> dict:
         return {"result": sum(values)}
 
 registry = CommandRegistry()
 registry.register(Calc)
 
-# LLM sees this minimal command context:
 print(registry.render_llm_context())
-# -> You can use the following CLI commands:
-#     calc: Calculator commands
+# You can use the following CLI commands:
+#   calc: Calculator commands
+# Use <command> --help when you need full argument details.
 
-result = registry.execute("calc add 10 20 30")
-print(result.value if result.ok else result.error.render())
-# -> {"result": 60.0}
-```
-
-## 🏗️ Core Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        LLM Output                            │
-│                    "calc add 10 20 30"                      │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      CommandRegistry                          │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐  │
-│  │  Parse   │─▶│ Validate │─▶│ Execute  │─▶│   Result   │  │
-│  └──────────┘  └──────────┘  └──────────┘  └────────────┘  │
-│                                                             │
-│  • Command hit/matching      • Lifecycle callbacks          │
-│  • Help generation           • Error with suggestions        │
-│  • Argument injection        • Chain execution (&&, ||, ;)  │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Your Functions / Tools                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📋 Key Features
-
-| Feature | Description |
-|---------|-------------|
-| 🔌 **Multiple Registrations** | Decorators, class inheritance, dataclass, Pydantic, schema wrapping |
-| ⚡ **CLI Parsing** | Positional args, quoted args, `--option value`, `-o value`, `--opt=val`, flags |
-| 📖 **Smart Help** | Auto-generated usage, help text, LLM prompts |
-| ✅ **Validation** | Type coercion, `requires`/`excludes`, enums |
-| 💡 **Suggestions** | "Did you mean X?" for unknown commands/options/enums |
-| 🔄 **Lifecycle Hooks** | `before_execute`, `after_execute`, `on_error` |
-| 🏃 **Internal Injection** | Hide callbacks/state from CLI, inject at runtime |
-| 🔗 **Chain Execution** | Quote-aware `cmd1 && cmd2 || cmd3 ; cmd4` |
-| ⏳ **Async Execution** | Native `execute_async(..., chain=False)` |
-| 🔌 **Tool Import** | Convert LangChain / AutoGen / OpenAI-style tools into `CommandSpec` |
-
-## 📝 Registration Patterns
-
-### 1️⃣ Decorator (Most Common)
-
-```python
-from typing import Annotated
-from agenticli import command, Option
-
-@command(name="ls", description="List directory")
-def ls(
-    path: Annotated[str, Option(short='p', description="Directory path")],
-    verbose: Annotated[bool, Option(short='v')] = False,
-) -> list[str]:
-    import os
-    return os.listdir(path)
-```
-
-### 2️⃣ Command Group
-
-```python
-from agenticli import command_group, command
-
-@command_group(name="db", description="Database operations")
-class Database:
-    @command(description="Create database")
-    def create(self, name: str) -> None: ...
-
-    @command(description="Drop database")
-    def drop(self, name: str) -> None: ...
-```
-
-### 3️⃣ Wrap Existing Tools
-
-```python
-from agenticli import wrap_tool
-
-class MyTool:
-    name = "my_tool"
-    description = "Does something"
-    parameters = {"type": "object", "properties": {"x": {"type": "int"}}}
-    async def execute(self, **kwargs): return kwargs
-
-registry.register_spec(wrap_tool(MyTool()))
-```
-
-### 4️⃣ Class Inheritance
-
-```python
-from agenticli import CliCommand, CommandRegistry
-
-class AddCommand(CliCommand):
-    name = "add"
-    description = "Add numbers"
-    args_model = AddArgs
-
-    async def run(self, **kwargs) -> dict:
-        return {"result": sum(kwargs["values"])}
-
-registry.register(AddCommand())
+print(registry.execute("calc add 10 20 30").value)
+# {"result": 60.0}
 ```
 
 ## 🤖 LLM Integration
 
-### Minimal Tool Schema
-
-Expose only one `exec` tool to the LLM:
+Expose a single `exec` tool to the model — it outputs a command string, you
+execute it and feed the result back.
 
 ```python
 from agenticli import ExecTool
@@ -181,259 +79,50 @@ exec_tool = ExecTool(callback=run_command)
 # Tool schema: {name: "exec", params: {command: string, timeout?: int}}
 ```
 
-### Lifecycle Callbacks
+## 📝 A Few Patterns
 
 ```python
-from agenticli import ExecutionCallbacks
+# Decorator
+@command(name="ls", description="List directory")
+def ls(
+    path: Annotated[str, Option(short='p')],
+    verbose: Annotated[bool, Option(short='v')] = False,
+) -> list[str]:
+    return os.listdir(path)
 
-def on_error(ctx):
-    print(f"Error: {ctx.error.code} - {ctx.error.message}")
+# Group
+@command_group(name="db", description="Database operations")
+class Database:
+    @command(description="Create database")
+    def create(self, name: str) -> None: ...
+    @command(description="Drop database")
+    def drop(self, name: str) -> None: ...
 
-registry = CommandRegistry(
-    callbacks=ExecutionCallbacks(on_error=on_error)
-)
+# Wrap an existing tool
+registry.register_spec(wrap_tool(MyTool()))
+
+# Class-based
+class AddCommand(CliCommand):
+    name = "add"
+    async def run(self, **kwargs) -> dict:
+        return {"result": sum(kwargs["values"])}
+
+registry.register(AddCommand())
 ```
 
-### Internal Parameter Injection
-
-```python
-from typing import Annotated
-from agenticli import Callback, State, command
-
-@command(name="process")
-def process(
-    data: list[str],
-    cache: Annotated[object, State(factory=lambda ctx: load_cache())] = None,
-):
-    # cache is injected automatically, hidden from CLI
-    return cached_transform(data, cache)
-```
-
-## 🔌 Import External Tools
-
-You can wrap existing framework tools into `agenticli` commands through
-functions in `agenticli.adapters`:
-
-```python
-from agenticli import CommandRegistry
-from agenticli.adapters import (
-    wrap_autogen_tool,
-    wrap_langchain_tool,
-    wrap_openai_tool_schema,
-)
-
-registry = CommandRegistry()
-
-registry.register_spec(wrap_langchain_tool(my_langchain_tool))
-registry.register_spec(wrap_autogen_tool(my_autogen_tool))
-registry.register_spec(
-    wrap_openai_tool_schema(
-        name="search_docs",
-        description="Search docs",
-        parameters={
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        },
-        handler=lambda query: {"query": query},
-    )
-)
-```
-
-## ⚡ Async API
-
-`agenticli` now supports native async execution:
+## ⚡ Async
 
 ```python
 result = await registry.execute_async("calc add 1 2 3")
 items = await registry.execute_async("cmd1 ; cmd2", chain=True)
 ```
 
-## 🧾 Command Syntax
+## 📚 More
 
-Command parsing uses shell-style quoting for arguments:
-
-```bash
-weather "New York" --unit fahrenheit
-say 'single quoted text'
-say "arg with \"nested\" quotes"
-```
-
-Backslash-newline continuations are normalized before parsing:
-
-```bash
-weather "New York" \
-  --unit fahrenheit
-```
-
-Command chains support `;`, `&&`, and `||`. Operators inside quotes stay part
-of the argument instead of splitting the chain:
-
-```bash
-say "hello ; world" ; say done
-say "hello && world" && say ok
-```
-
-Invalid input returns structured errors:
-
-```python
-result = registry.execute('weather "Beijing')
-assert result.ok is False
-assert result.error.code == "parse_error"
-
-registry.execute("missing && weather Beijing", chain=True)
-# ["Error: Unknown command"]
-```
-
-## 📖 Auto-Generated Help
-
-`<name> --help` and `registry.help(name)` render help from each command's
-`ValidationAdapter.help_text()`. Given:
-
-```python
-@command_group(name="files", description="File and text operations")
-class Files:
-    @command(name="ls", description="List directory contents")
-    def ls(
-        self,
-        path: Annotated[str, Option(short="p", description="Directory path", value_name="PATH", example="/tmp")],
-        verbose: Annotated[bool, Option(short="v", description="Also list hidden entries")] = False,
-        ext: Annotated[str, Option(short="e", description="Filter by extension", value_name="EXT", example=".log")] = "",
-    ) -> list[str]: ...
-```
-
-`files ls --help` renders:
-
-```
-files ls - List directory contents
-
-Usage:
-  ls --path <PATH> [--verbose] [--ext <EXT>]
-
-Args:
-  -p,--path PATH required example:/tmp, Directory path
-  -v,--verbose flag default:false, Also list hidden entries
-  -e,--ext EXT default: example:.log, Filter by extension
-```
-
-Group help lists subcommands instead of arguments. The LLM-facing prompt
-from `registry.render_llm_context()` is intentionally minimal and does
-**not** embed the full help — it tells the model to use
-`<command> --help` when it needs more.
-
-> **0.2.5**: the auto-generated help is now a flat, single-line-per-arg
-> layout — `Header` / `Usage` / `Args`. Modifiers on each arg are
-> space-separated (`flag`, `required`, `default:X`, `enum:[…]`,
-> `example:X`) with `, description` appended at the end.
-
-## 📦 Stable API
-
-```python
-# Core
-CommandRegistry
-CommandRegistry.register(target)
-CommandRegistry.register_spec(spec)
-CommandRegistry.unregister(name)
-CommandRegistry.get(name)
-CommandRegistry.has(name)
-CommandRegistry.parse(command_str, chain=False)
-CommandRegistry.execute(command_str, chain=False)
-CommandRegistry.execute_async(command_str, chain=False)
-CommandRegistry.discover(directory, *, context_provider=None, recursive=True, package=None, on_error="ignore")
-CommandRegistry.match(text, chain=False, mode="command")
-CommandRegistry.help(command=None)
-CommandRegistry.render_llm_context(detailed=False)
-CommandRegistry.commands
-
-# Decorators
-command(_func=None, *, name=None, description="", aliases=None, hidden=False, deprecated=None, include_in_prompt=None)
-command_group(name="", description="", *, include_in_prompt=True, register_as_command=None)
-
-# Helpers
-CliCommand
-wrap_tool(tool)
-command_from_model(name, model, handler)
-command_from_method(name, target, method_name)
-wrap_langchain_tool(tool)
-wrap_autogen_tool(tool)
-wrap_openai_tool_schema(name, parameters, handler, ...)
-Option
-Injected / Callback / State
-ExecutionCallbacks
-ExecTool
-```
-
-Upgrading from 0.1.x? See [docs/migration_0.2.md](docs/migration_0.2.md).
-
-## 💡 Examples
-
-See [example/provider_integration.py](example/provider_integration.py) for a complete calc system with OpenAI/Anthropic integration:
-
-```bash
-pip install "agenticli[examples]"
-python -m example.provider_integration --provider openai
-python -m example.provider_integration --provider anthropic
-```
-
-For a local Linux-like command demo (`pwd`, `cd`, `ls`, `cat`, `head`, `grep`, `wc`):
-
-```bash
-python -m example.linux_like_shell
-```
-
-Usage pattern demos:
-
-```bash
-python -m example.decorator
-python -m example.command_group
-python -m example.cli_command
-python -m example.command_from_model
-python -m example.command_from_method
-python -m example.wrap_tool
-python -m example.external_adapters
-python -m example.discover
-python -m example.context_group_instance
-python -m example.context_state_factory
-python -m example.context_init
-```
-
-## 🔎 Auto-Discovery
-
-`CommandRegistry.discover()` walks a directory and registers every class
-that opts in via `@command_group` or by subclassing `CliCommand`. An
-optional `context_provider` callback binds request-scoped context to
-each discovered class — useful when the same registry powers many
-tenants:
-
-```python
-from agenticli import CommandRegistry
-
-def provide_context(cls):
-    if cls is UserService:
-        return cls(user_id="alice", tenant_id="acme")
-    return cls()
-
-registry = CommandRegistry()
-result = registry.discover(
-    "example/discover_cmds",
-    context_provider=provide_context,
-    package="example.discover_cmds",
-)
-print(result.registered)   # newly added command names
-print(result.errors)       # per-file failures (when on_error="ignore")
-```
-
-See [example/discover.py](example/discover.py) for a runnable demo.
-
-## 📚 Documentation
-
-| Language | Link |
-|----------|------|
-| 🇺🇸 English README | [README.md](README.md) |
-| 🇨🇳 中文 README | [README_zh.md](README_zh.md) |
-| 🇺🇸 English | [docs/index_en.md](docs/index_en.md) |
-| 🇨🇳 中文 | [docs/index_zh.md](docs/index_zh.md) |
-| Migration | [docs/migration_0.2.md](docs/migration_0.2.md) |
+- **Examples**: [example/](example/) — calc, provider integration, Linux-like shell, auto-discovery, etc.
+- **Docs**: [docs/index_en.md](docs/index_en.md) · [中文](docs/index_zh.md)
+- **Migration from 0.1.x**: [docs/migration_0.2.md](docs/migration_0.2.md)
+- **API reference**: see `## 📦 Stable API` in [docs/index_en.md](docs/index_en.md)
 
 ## 📄 License
 
